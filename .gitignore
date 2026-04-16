@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+*.whl
+
+# Python environment
+.venv/
+venv/
+env/
+
+# Database
+*.db
+
+# Environment variables
+.env
+!.env.example
+
+# Node
+node_modules/
+
+# Frontend build
+frontend/dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Reference repos (not tracked)
+reference/
+
+# Data
+data/
