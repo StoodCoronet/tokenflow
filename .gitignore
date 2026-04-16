@@ -1,30 +1,25 @@
-# Python
+# Node
+node_modules/
+
+# Build
+dist/
+*.tsbuildinfo
+
+# Python (legacy)
 __pycache__/
 *.py[cod]
-*$py.class
-*.egg-info/
-*.egg
-dist/
-build/
-*.whl
-
-# Python environment
 .venv/
 venv/
-env/
 
 # Database
 *.db
 
-# Environment variables
+# Environment
 .env
 !.env.example
 
-# Node
-node_modules/
-
-# Frontend build
-frontend/dist/
+# Config runtime
+.tokenflow/
 
 # IDE
 .vscode/
@@ -44,3 +39,6 @@ reference/
 
 # Data
 data/
+
+# Old frontend (migrated to packages/ui)
+frontend/
