@@ -1,49 +1,57 @@
-import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
+import type { FastifyRequest, FastifyReply } from 'fastify'
 import { generateId } from '@tokenflow/shared'
-import { getApiKey } from '../db/schema.js'
-import { insertRequestLog, upsertSession } from '../db/schema.js'
+import { getApiKey, insertRequestLog, upsertSession, getSession } from '../db/schema.js'
 import { runDetectors } from '../detectors/index.js'
+import { detectTransformer, getTransformer } from '../transformers/index.js'
+import { resolveRoute } from './router.js'
+import { loadConfig } from '../configLoader.js'
 
 export async function proxyHandler(request: FastifyRequest, reply: FastifyReply) {
   const body = request.body as any
   const apiKeyHeader = request.headers['x-api-key'] as string
 
   if (!apiKeyHeader) {
-    return reply.code(401).send({ error: 'Missing X-API-Key header' })
+    return reply.code(401).send({ error: { message: 'Missing X-API-Key header' } })
   }
 
   const apiKey = getApiKey(apiKeyHeader)
   if (!apiKey) {
-    return reply.code(401).send({ error: 'Invalid API Key' })
+    return reply.code(401).send({ error: { message: 'Invalid API Key' } })
   }
 
-  // Find matching provider
-  const { loadConfig } = await import('../configLoader.js')
   const config = loadConfig()
-  const provider = config.Providers.find(p =>
-    p.models.includes(body.model) || p.name === apiKey.provider
-  )
 
-  if (!provider) {
-    return reply.code(400).send({ error: `No provider found for model: ${body.model}` })
+  // Determine target provider and model
+  let providerName = apiKey.provider
+  let targetModel = body.model
+
+  // Smart routing (if enabled)
+  const route = resolveRoute(body, config)
+  if (route) {
+    providerName = route.providerName
+    if (!body.model) targetModel = route.model
   }
 
-  // Build upstream request
-  const upstreamUrl = `${provider.api_base_url}/v1${request.url.replace('/v1', '')}`
-  const startTime = Date.now()
+  const provider = config.Providers.find(p => p.name === providerName)
+  if (!provider) {
+    return reply.code(400).send({ error: { message: `No provider "${providerName}" configured` } })
+  }
+
+  // Get the right transformer for the target provider
+  const transformer = getTransformer(providerName) || getTransformer('openai')!
+
+  // Build the upstream request
+  const upstream = transformer.formatRequest(
+    { ...body, model: targetModel || body.model },
+    { api_base_url: provider.api_base_url, api_key: provider.api_key, models: provider.models }
+  )
 
   try {
     const isStream = body.stream === true
-
-    const upstreamHeaders: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${provider.api_key}`,
-    }
-
-    const response = await fetch(upstreamUrl, {
+    const response = await fetch(upstream.url, {
       method: 'POST',
-      headers: upstreamHeaders,
-      body: JSON.stringify(body),
+      headers: upstream.headers,
+      body: JSON.stringify(upstream.body),
     })
 
     if (!response.ok) {
@@ -52,7 +60,7 @@ export async function proxyHandler(request: FastifyRequest, reply: FastifyReply)
     }
 
     if (isStream && response.body) {
-      // Stream response
+      // Stream response back
       reply.raw.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
@@ -74,34 +82,41 @@ export async function proxyHandler(request: FastifyRequest, reply: FastifyReply)
           reply.raw.write(chunk)
           fullContent += chunk
 
-          // Try to extract usage from stream
-          const usageMatch = chunk.match(/"usage":\s*\{[^}]+\}/)
-          if (usageMatch) {
-            try {
-              usage = JSON.parse(`{${usageMatch[0]}}`).usage
-            } catch {}
+          // Extract usage from SSE stream
+          for (const line of chunk.split('\n')) {
+            if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+              try {
+                const parsed = JSON.parse(line.slice(6))
+                if (parsed.usage) {
+                  usage = parsed.usage
+                }
+              } catch {}
+            }
           }
         }
       } finally {
         reply.raw.end()
       }
 
-      // Log after stream completes
-      const analysis = runDetectors(body, usage)
+      // Async analysis and logging
+      const session = getSession(body.session_id || `auto-${generateId().slice(0, 8)}`)
+      const analysis = runDetectors(body, usage, session as any)
       logRequest(apiKey.id, body, usage, 'success', analysis)
+
     } else {
       // Non-stream response
-      const data = await response.json() as any
-      const usage = data.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
+      const rawResponse = await response.json()
+      const parsed = transformer.parseResponse(rawResponse)
 
-      const analysis = runDetectors(body, usage)
-      logRequest(apiKey.id, body, usage, 'success', analysis)
+      const session = getSession(body.session_id || `auto-${generateId().slice(0, 8)}`)
+      const analysis = runDetectors(body, parsed.usage, session as any)
+      logRequest(apiKey.id, body, parsed.usage, 'success', analysis)
 
-      return reply.send(data)
+      return reply.send(rawResponse)
     }
   } catch (err: any) {
     logRequest(apiKey.id, body, { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }, 'error', null)
-    return reply.code(502).send({ error: `Upstream error: ${err.message}` })
+    return reply.code(502).send({ error: { message: `Upstream error: ${err.message}` } })
   }
 }
 

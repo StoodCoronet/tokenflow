@@ -116,6 +116,10 @@ export function insertRequestLog(log: {
 
 // --- Session ---
 
+export function getSession(sessionId: string) {
+  return getDb().prepare('SELECT * FROM sessions WHERE session_id = ?').get(sessionId)
+}
+
 export function upsertSession(data: {
   session_id: string
   api_key_id: string
