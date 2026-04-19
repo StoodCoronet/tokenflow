@@ -1,6 +1,5 @@
 import React, { useState, useCallback } from 'react'
-import { Box, Text, useInput, useApp } from 'ink'
-import { Sidebar, StatusBar } from './components.js'
+import { Box, Text, useInput, useApp, useStdout } from 'ink'
 import { ProvidersPage, PortsPage, RouterPage, DetectorsPage, GeneralPage } from './pages.js'
 import { loadConfig, saveConfig } from '../utils/configLoader.js'
 import type { AppConfig } from '@tokenflow/shared'
@@ -17,10 +16,14 @@ const pages: { key: Page; label: string }[] = [
 
 export function TuiApp() {
   const { exit } = useApp()
+  const { stdout } = useStdout()
+  const termHeight = stdout?.rows || 24
+  const termWidth = stdout?.columns || 80
+
   const [selected, setSelected] = useState(0)
   const [page, setPage] = useState<Page>('providers')
   const [config, setConfig] = useState<AppConfig>(loadConfig())
-  const [inPage, setInPage] = useState(true)
+  const [inPage, setInPage] = useState(false)
 
   const handleSave = useCallback((updated: AppConfig) => {
     saveConfig(updated)
@@ -28,37 +31,50 @@ export function TuiApp() {
   }, [])
 
   const handleBack = useCallback(() => {
-    setInPage(true)
+    setInPage(false)
   }, [])
 
   useInput((input, key) => {
-    if (!inPage) return
-
     if (input === 'q') { exit(); return }
-    if (key.upArrow) {
-      const next = selected > 0 ? selected - 1 : pages.length - 1
-      setSelected(next)
-      setPage(pages[next].key)
+
+    // Left arrow: always go back to sidebar
+    if (key.leftArrow) { setInPage(false); return }
+
+    // Sidebar mode: up/down navigate, right enters
+    if (!inPage) {
+      if (key.upArrow) {
+        const next = selected > 0 ? selected - 1 : pages.length - 1
+        setSelected(next)
+        setPage(pages[next].key)
+      }
+      if (key.downArrow) {
+        const next = selected < pages.length - 1 ? selected + 1 : 0
+        setSelected(next)
+        setPage(pages[next].key)
+      }
+      if (key.rightArrow || key.return) { setInPage(true) }
     }
-    if (key.downArrow) {
-      const next = selected < pages.length - 1 ? selected + 1 : 0
-      setSelected(next)
-      setPage(pages[next].key)
-    }
-    if (key.return) { setInPage(false) }
   })
 
   const hints = inPage
-    ? '↑↓ navigate │ Enter select │ q quit'
-    : 'ESC back │ Enter save/toggle'
+    ? '← back │ Enter save/toggle │ q quit'
+    : '↑↓ navigate │ → enter │ q quit'
+
+  const headerHeight = 1
+  const statusHeight = 1
+  const bodyHeight = termHeight - headerHeight - statusHeight - 2
 
   return (
-    <Box flexDirection="column" height="100%">
-      <Box>
+    <Box flexDirection="column" height={termHeight}>
+      {/* Header */}
+      <Box width={termWidth}>
         <Text bold color="cyan"> Token Flow Config</Text>
-        <Text dimColor> ──────────────────────────────────────</Text>
+        <Text dimColor>{'─'.repeat(termWidth - 18)}</Text>
       </Box>
-      <Box flexGrow={1} flexDirection="row" marginTop={1}>
+
+      {/* Body */}
+      <Box flexDirection="row" height={bodyHeight} width={termWidth}>
+        {/* Sidebar */}
         <Box flexDirection="column" width={20} borderStyle="single" borderColor="gray" paddingX={1}>
           {pages.map((p, i) => (
             <Box key={p.key}>
@@ -67,8 +83,13 @@ export function TuiApp() {
               </Text>
             </Box>
           ))}
+          {/* Push help to bottom */}
+          <Box flexGrow={1} />
+          <Text dimColor wrap="wrap"> q quit</Text>
         </Box>
-        <Box flexGrow={1} paddingX={1}>
+
+        {/* Content */}
+        <Box flexGrow={1} flexDirection="column" paddingX={1}>
           {!inPage && page === 'providers' && <ProvidersPage config={config} onSave={handleSave} onBack={handleBack} />}
           {!inPage && page === 'ports' && <PortsPage config={config} onSave={handleSave} onBack={handleBack} />}
           {!inPage && page === 'router' && <RouterPage config={config} onSave={handleSave} onBack={handleBack} />}
@@ -88,7 +109,11 @@ export function TuiApp() {
           )}
         </Box>
       </Box>
-      <StatusBar hints={hints} />
+
+      {/* Status bar */}
+      <Box width={termWidth} borderStyle="single" borderColor="gray" paddingX={1}>
+        <Text dimColor>{hints}</Text>
+      </Box>
     </Box>
   )
 }

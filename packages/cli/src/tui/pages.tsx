@@ -20,13 +20,14 @@ export function ProvidersPage({ config, onSave, onBack }: {
 
   useInput((input, key) => {
     if (editing) {
-      if (key.escape) { setEditing(false); setDraft(null) }
+      if (key.leftArrow) { setEditing(false); setDraft(null) }
       return
     }
-    if (key.escape || input === 'q') { onBack(); return }
+    if (key.leftArrow) { onBack(); return }
     if (key.upArrow && idx > 0) { setIdx(idx - 1); setSaved(false) }
     if (key.downArrow && idx < providers.length - 1) { setIdx(idx + 1); setSaved(false) }
-    if (key.return) {
+    if (key.rightArrow || key.return) {
+      if (!providers.length) return
       setDraft({ ...providers[idx] })
       setEditing(true)
       setSaved(false)
@@ -47,7 +48,7 @@ export function ProvidersPage({ config, onSave, onBack }: {
       <Text bold color="cyan">Providers</Text>
       <Box marginTop={1} flexDirection="column">
         <Text dimColor>{idx + 1}/{providers.length} — {providers[idx]?.name || 'none'}</Text>
-        <Box marginTop={1} flexDirection="column" gap={0}>
+        <Box marginTop={1} flexDirection="column">
           {current ? (
             <>
               <FieldRow label="Name" value={current.name} editing={editing} />
@@ -63,7 +64,7 @@ export function ProvidersPage({ config, onSave, onBack }: {
       {editing && <ProviderEditForm provider={draft!} onSave={save} />}
       {!editing && saved && <SuccessMsg text="Saved" />}
       <Box marginTop={1}>
-        <Text dimColor>↑↓ switch │ Enter edit │ ESC back</Text>
+        <Text dimColor>↑↓ switch │ → edit │ ← back</Text>
       </Box>
     </Box>
   )
@@ -83,7 +84,7 @@ function ProviderEditForm({ provider, onSave }: {
   const fields = ['name', 'api_base_url', 'api_key', 'models'] as const
 
   useInput((input, key) => {
-    if (key.escape) { onSave(provider) }
+    if (key.leftArrow) { onSave(provider); return }
     if (key.return) {
       if (field < fields.length - 1) { setField(field + 1) }
       else {
@@ -114,7 +115,7 @@ function ProviderEditForm({ provider, onSave }: {
       {fields.map((f, i) => (
         <FieldRow key={f} label={f} value={values[f]} editing={i === field} />
       ))}
-      <Text dimColor>Enter next field │ Enter on last = save │ ESC cancel</Text>
+      <Text dimColor>Enter next │ Enter on last = save │ ← cancel</Text>
     </Box>
   )
 }
@@ -135,7 +136,7 @@ export function PortsPage({ config, onSave, onBack }: {
   const fields = ['PORT', 'UI_PORT'] as const
 
   useInput((input, key) => {
-    if (key.escape || input === 'q') { onBack(); return }
+    if (key.leftArrow) { onBack(); return }
     if (key.return) {
       if (field < fields.length - 1) { setField(field + 1) }
       else {
@@ -169,7 +170,7 @@ export function PortsPage({ config, onSave, onBack }: {
       </Box>
       {saved && <SuccessMsg text="Saved" />}
       <Box marginTop={1}>
-        <Text dimColor>Enter next/save │ ESC back</Text>
+        <Text dimColor>Enter next/save │ ← back</Text>
       </Box>
     </Box>
   )
@@ -190,7 +191,7 @@ export function RouterPage({ config, onSave, onBack }: {
   const [saved, setSaved] = useState(false)
 
   useInput((input, key) => {
-    if (key.escape || input === 'q') { onBack(); return }
+    if (key.leftArrow) { onBack(); return }
     if (key.return) {
       if (field === 0) {
         setValues({ ...values, enabled: !values.enabled })
@@ -200,6 +201,7 @@ export function RouterPage({ config, onSave, onBack }: {
       }
       return
     }
+    if (key.upArrow || key.downArrow) { setField(field === 0 ? 1 : 0) }
     if (key.backspace && field === 1) {
       setValues({ ...values, default: values.default.slice(0, -1) })
       return
@@ -218,7 +220,7 @@ export function RouterPage({ config, onSave, onBack }: {
       </Box>
       {saved && <SuccessMsg text="Saved" />}
       <Box marginTop={1}>
-        <Text dimColor>Enter toggle/save │ ESC back</Text>
+        <Text dimColor>↑↓ switch │ Enter toggle/save │ ← back</Text>
       </Box>
     </Box>
   )
@@ -236,7 +238,7 @@ export function DetectorsPage({ config, onSave, onBack }: {
   const [saved, setSaved] = useState(false)
 
   useInput((input, key) => {
-    if (key.escape || input === 'q') { onBack(); return }
+    if (key.leftArrow) { onBack(); return }
     if (key.upArrow && idx > 0) { setIdx(idx - 1); setSaved(false) }
     if (key.downArrow && idx < entries.length - 1) { setIdx(idx + 1); setSaved(false) }
     if (key.return) {
@@ -258,7 +260,7 @@ export function DetectorsPage({ config, onSave, onBack }: {
       </Box>
       {saved && <SuccessMsg text="Saved" />}
       <Box marginTop={1}>
-        <Text dimColor>↑↓ switch │ Enter toggle │ ESC back</Text>
+        <Text dimColor>↑↓ switch │ Enter toggle │ ← back</Text>
       </Box>
     </Box>
   )
@@ -280,7 +282,7 @@ export function GeneralPage({ config, onSave, onBack }: {
   const fields = ['LOG_LEVEL', 'DATABASE'] as const
 
   useInput((input, key) => {
-    if (key.escape || input === 'q') { onBack(); return }
+    if (key.leftArrow) { onBack(); return }
     if (key.return) {
       if (field < fields.length - 1) { setField(field + 1) }
       else {
@@ -310,7 +312,7 @@ export function GeneralPage({ config, onSave, onBack }: {
       </Box>
       {saved && <SuccessMsg text="Saved" />}
       <Box marginTop={1}>
-        <Text dimColor>Enter next/save │ ESC back</Text>
+        <Text dimColor>Enter next/save │ ← back</Text>
       </Box>
     </Box>
   )
