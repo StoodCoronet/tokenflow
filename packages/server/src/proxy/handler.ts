@@ -2,7 +2,8 @@ import type { FastifyRequest, FastifyReply } from 'fastify'
 import { generateId } from '@tokenflow/shared'
 import { getApiKey, insertRequestLog, upsertSession, getSession } from '../db/schema.js'
 import { runDetectors } from '../detectors/index.js'
-import { detectTransformer, getTransformer } from '../transformers/index.js'
+import { getTransformer } from '../transformers/index.js'
+import type { InternalRequest, TransformContext } from '../transformers/base.js'
 import { resolveRoute } from './router.js'
 import { loadConfig } from '../configLoader.js'
 
@@ -37,17 +38,35 @@ export async function proxyHandler(request: FastifyRequest, reply: FastifyReply)
     return reply.code(400).send({ error: { message: `No provider "${providerName}" configured` } })
   }
 
-  // Get the right transformer for the target provider
+  // Get transformer for the target provider
   const transformer = getTransformer(providerName) || getTransformer('openai')!
 
-  // Build the upstream request
-  const upstream = transformer.formatRequest(
-    { ...body, model: targetModel || body.model },
-    { api_base_url: provider.api_base_url, api_key: provider.api_key, models: provider.models }
-  )
+  const ctx: TransformContext = {
+    provider: { api_base_url: provider.api_base_url, api_key: provider.api_key, models: provider.models },
+    isStream: body.stream === true,
+  }
+
+  // Build internal request (normalize incoming body)
+  let internal: InternalRequest = body
+  if (transformer.transformRequestIn) {
+    internal = await transformer.transformRequestIn(body, ctx)
+  }
+  internal.model = targetModel || internal.model
+
+  // Format request for the upstream provider
+  let upstream: { url: string; headers: Record<string, string>; body: unknown }
+  if (transformer.transformRequestOut) {
+    upstream = await transformer.transformRequestOut(internal, ctx)
+  } else {
+    // Fallback: raw pass-through
+    upstream = {
+      url: `${provider.api_base_url}/v1/chat/completions`,
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${provider.api_key}` },
+      body: internal,
+    }
+  }
 
   try {
-    const isStream = body.stream === true
     const response = await fetch(upstream.url, {
       method: 'POST',
       headers: upstream.headers,
@@ -59,7 +78,15 @@ export async function proxyHandler(request: FastifyRequest, reply: FastifyReply)
       return reply.code(response.status).send(errBody)
     }
 
-    if (isStream && response.body) {
+    // Transform response if needed
+    let finalResponse = response
+    if (transformer.transformResponseIn) {
+      finalResponse = await transformer.transformResponseIn(response, ctx)
+    }
+
+    const isStream = body.stream === true
+
+    if (isStream && finalResponse.body) {
       // Stream response back
       reply.raw.writeHead(200, {
         'Content-Type': 'text/event-stream',
@@ -70,7 +97,7 @@ export async function proxyHandler(request: FastifyRequest, reply: FastifyReply)
       let fullContent = ''
       let usage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
 
-      const reader = response.body.getReader()
+      const reader = finalResponse.body.getReader()
       const decoder = new TextDecoder()
 
       try {
@@ -99,18 +126,20 @@ export async function proxyHandler(request: FastifyRequest, reply: FastifyReply)
       }
 
       // Async analysis and logging
-      const session = getSession(body.session_id || `auto-${generateId().slice(0, 8)}`)
+      const sessionId = body.session_id || `auto-${generateId().slice(0, 8)}`
+      const session = getSession(sessionId)
       const analysis = runDetectors(body, usage, session as any)
       logRequest(apiKey.id, body, usage, 'success', analysis)
 
     } else {
       // Non-stream response
-      const rawResponse = await response.json()
-      const parsed = transformer.parseResponse(rawResponse)
+      const rawResponse = await finalResponse.json()
+      const usage = extractUsage(rawResponse)
 
-      const session = getSession(body.session_id || `auto-${generateId().slice(0, 8)}`)
-      const analysis = runDetectors(body, parsed.usage, session as any)
-      logRequest(apiKey.id, body, parsed.usage, 'success', analysis)
+      const sessionId = body.session_id || `auto-${generateId().slice(0, 8)}`
+      const session = getSession(sessionId)
+      const analysis = runDetectors(body, usage, session as any)
+      logRequest(apiKey.id, body, usage, 'success', analysis)
 
       return reply.send(rawResponse)
     }
@@ -118,6 +147,17 @@ export async function proxyHandler(request: FastifyRequest, reply: FastifyReply)
     logRequest(apiKey.id, body, { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }, 'error', null)
     return reply.code(502).send({ error: { message: `Upstream error: ${err.message}` } })
   }
+}
+
+function extractUsage(raw: any): { prompt_tokens: number; completion_tokens: number; total_tokens: number } {
+  if (raw.usage) {
+    return {
+      prompt_tokens: raw.usage.prompt_tokens || raw.usage.input_tokens || 0,
+      completion_tokens: raw.usage.completion_tokens || raw.usage.output_tokens || 0,
+      total_tokens: raw.usage.total_tokens || 0,
+    }
+  }
+  return { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
 }
 
 function logRequest(

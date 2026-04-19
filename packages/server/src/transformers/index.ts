@@ -1,25 +1,39 @@
-import type { Transformer, InternalRequest, ProviderRequest, InternalResponse, ProviderConfig } from './base.js'
+import type { Transformer } from './base.js'
 import { OpenAITransformer } from './openai.js'
 import { AnthropicTransformer } from './anthropic.js'
+import { DashScopeTransformer } from './dashscope.js'
+import { MiniMaxTransformer } from './minimax.js'
+import { ZhipuTransformer } from './zhipu.js'
+import { MoonshotTransformer } from './moonshot.js'
 
-const transformers: Transformer[] = [
-  new OpenAITransformer(),
-  new AnthropicTransformer(),
-]
+const registry = new Map<string, Transformer>()
 
-/** Find a transformer that can handle the given request body */
-export function detectTransformer(body: unknown): Transformer | null {
-  // Try Anthropic first (more specific detection)
-  for (const t of transformers) {
-    if (t.detect(body)) return t
-  }
-  return null
+function register(t: Transformer) {
+  registry.set(t.name, t)
 }
+
+// Register built-in transformers
+register(new OpenAITransformer())
+register(new AnthropicTransformer())
+register(new DashScopeTransformer())
+register(new MiniMaxTransformer())
+register(new ZhipuTransformer())
+register(new MoonshotTransformer())
 
 /** Get transformer by provider name */
-export function getTransformer(providerName: string): Transformer | null {
-  return transformers.find(t => t.providerName === providerName) ?? null
+export function getTransformer(name: string): Transformer | null {
+  return registry.get(name) ?? null
 }
 
-export { OpenAITransformer, AnthropicTransformer }
-export type { Transformer, InternalRequest, ProviderRequest, InternalResponse, ProviderConfig }
+/** Register a custom transformer at runtime */
+export function registerTransformer(t: Transformer): void {
+  register(t)
+}
+
+/** Get all registered transformers */
+export function getAllTransformers(): Map<string, Transformer> {
+  return new Map(registry)
+}
+
+export { OpenAITransformer, AnthropicTransformer, DashScopeTransformer, MiniMaxTransformer, ZhipuTransformer, MoonshotTransformer }
+export type { Transformer, InternalRequest, ProviderRequest, InternalResponse, ProviderConfig, TransformContext } from './base.js'

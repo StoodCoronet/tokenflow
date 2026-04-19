@@ -1,87 +1,131 @@
-import type { Transformer, InternalRequest, ProviderRequest, InternalResponse, ProviderConfig } from './base.js'
+import type { Transformer, InternalRequest, ProviderRequest, ProviderConfig, TransformContext } from './base.js'
 
 /**
  * Anthropic API format transformer.
- * Converts between OpenAI-style internal format and Anthropic's API format.
+ * Converts between OpenAI internal format and Anthropic's API format.
  */
 export class AnthropicTransformer implements Transformer {
-  providerName = 'anthropic'
+  name = 'anthropic'
+  endPoint = '/v1/messages'
 
-  detect(body: unknown): boolean {
-    const b = body as any
-    return (
-      b?.anthropic_version !== undefined ||
-      (Array.isArray(b?.messages) &&
-        typeof b?.model === 'string' &&
-        b.model.startsWith('claude'))
-    )
-  }
+  async transformRequestOut(request: InternalRequest, context: TransformContext): Promise<ProviderRequest> {
+    const messages: any[] = []
+    let systemContent = ''
 
-  transformRequest(body: unknown): InternalRequest {
-    const b = body as any
-    // Anthropic separates system from messages
-    const messages = (b.messages || []).filter((m: any) => m.role !== 'system')
-    const systemContent = b.system
-      || (b.messages || []).filter((m: any) => m.role === 'system').map((m: any) => m.content).join('\n')
-      || ''
-
-    return {
-      model: b.model,
-      messages,
-      stream: b.stream,
-      temperature: b.temperature,
-      max_tokens: b.max_tokens,
-      tools: b.tools,
-      _anthropic_system: systemContent,
-      _anthropic_version: b.anthropic_version,
+    for (const msg of request.messages) {
+      if (msg.role === 'system') {
+        systemContent += (typeof msg.content === 'string' ? msg.content : '') + '\n'
+        continue
+      }
+      if (msg.role === 'tool') {
+        messages.push({
+          role: 'user',
+          content: [{
+            type: 'tool_result',
+            tool_use_id: msg.tool_call_id,
+            content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
+          }],
+        })
+        continue
+      }
+      if (msg.role === 'assistant' && msg.tool_calls?.length) {
+        const content: any[] = []
+        const text = typeof msg.content === 'string' ? msg.content : ''
+        if (text) content.push({ type: 'text', text })
+        for (const tc of msg.tool_calls as any[]) {
+          content.push({
+            type: 'tool_use',
+            id: tc.id,
+            name: tc.function?.name,
+            input: JSON.parse(tc.function?.arguments || '{}'),
+          })
+        }
+        messages.push({ role: 'assistant', content })
+        continue
+      }
+      messages.push({ role: msg.role, content: msg.content })
     }
-  }
 
-  formatRequest(request: InternalRequest, config: ProviderConfig): ProviderRequest {
     const body: any = {
       model: request.model,
-      messages: request.messages,
+      messages,
+      max_tokens: request.max_tokens || 4096,
       stream: request.stream,
       temperature: request.temperature,
-      max_tokens: request.max_tokens || 4096,
-      tools: request.tools,
-      anthropic_version: (request as any)._anthropic_version || '2023-06-01',
+      anthropic_version: '2023-06-01',
     }
-
-    // Anthropic uses top-level `system` field
-    const system = (request as any)._anthropic_system
-    if (system) {
-      body.system = system
+    if (systemContent.trim()) body.system = systemContent.trim()
+    if (request.tools?.length) {
+      body.tools = (request.tools as any[]).map((t: any) => ({
+        name: t.function?.name,
+        description: t.function?.description,
+        input_schema: t.function?.parameters,
+      }))
+    }
+    if (request.tool_choice) {
+      if (typeof request.tool_choice === 'string') {
+        body.tool_choice = { type: request.choice }
+      } else if ((request.tool_choice as any)?.function) {
+        body.tool_choice = { type: 'tool', name: (request.tool_choice as any).function.name }
+      }
     }
 
     return {
-      url: `${config.api_base_url}/v1/messages`,
+      url: `${context.provider.api_base_url}${this.endPoint}`,
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': config.api_key,
-        'anthropic-version': body.anthropic_version,
+        'x-api-key': context.provider.api_key,
+        'anthropic-version': '2023-06-01',
       },
       body,
     }
   }
 
-  parseResponse(response: unknown): InternalResponse {
-    const r = response as any
+  async transformResponseIn(response: Response, context: TransformContext): Promise<Response> {
+    const isStream = response.headers.get('Content-Type')?.includes('text/event-stream')
+    if (isStream) return response // Stream passthrough for now
+
+    const data = await response.json() as any
+    const converted = this.convertResponse(data)
+    return new Response(JSON.stringify(converted), {
+      status: response.status,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  private convertResponse(r: any): any {
     const content = Array.isArray(r.content)
       ? r.content.filter((c: any) => c.type === 'text').map((c: any) => c.text).join('')
       : ''
 
+    const toolCalls = Array.isArray(r.content)
+      ? r.content.filter((c: any) => c.type === 'tool_use').map((tc: any) => ({
+          id: tc.id,
+          type: 'function',
+          function: { name: tc.name, arguments: JSON.stringify(tc.input) },
+        }))
+      : undefined
+
     return {
-      id: r.id || '',
-      model: r.model || '',
-      content,
+      id: r.id,
+      object: 'chat.completion',
+      model: r.model,
+      choices: [{
+        index: 0,
+        message: {
+          role: 'assistant',
+          content,
+          ...(toolCalls?.length ? { tool_calls: toolCalls } : {}),
+        },
+        finish_reason: r.stop_reason === 'tool_use' ? 'tool_calls'
+          : r.stop_reason === 'max_tokens' ? 'length'
+          : 'stop',
+      }],
       usage: {
         prompt_tokens: r.usage?.input_tokens || 0,
         completion_tokens: r.usage?.output_tokens || 0,
         total_tokens: (r.usage?.input_tokens || 0) + (r.usage?.output_tokens || 0),
       },
-      finish_reason: r.stop_reason || '',
-      raw: response,
     }
   }
 }
