@@ -35,12 +35,12 @@ export function TuiApp() {
   }, [])
 
   useInput((input, key) => {
-    if (input === 'q') { exit(); return }
+    if (input === 'q' && !inPage) { exit(); return }
 
-    // Left arrow: always go back to sidebar
-    if (key.leftArrow) { setInPage(false); return }
+    // Left arrow: go back to sidebar from any page
+    if (key.leftArrow && inPage) { setInPage(false); return }
 
-    // Sidebar mode: up/down navigate, right enters
+    // Sidebar mode
     if (!inPage) {
       if (key.upArrow) {
         const next = selected > 0 ? selected - 1 : pages.length - 1
@@ -57,7 +57,7 @@ export function TuiApp() {
   })
 
   const hints = inPage
-    ? '← back │ Enter save/toggle │ q quit'
+    ? '← back │ Enter save/toggle'
     : '↑↓ navigate │ → enter │ q quit'
 
   const headerHeight = 1
@@ -90,12 +90,12 @@ export function TuiApp() {
 
         {/* Content */}
         <Box flexGrow={1} flexDirection="column" paddingX={1}>
-          {!inPage && page === 'providers' && <ProvidersPage config={config} onSave={handleSave} onBack={handleBack} />}
-          {!inPage && page === 'ports' && <PortsPage config={config} onSave={handleSave} onBack={handleBack} />}
-          {!inPage && page === 'router' && <RouterPage config={config} onSave={handleSave} onBack={handleBack} />}
-          {!inPage && page === 'detectors' && <DetectorsPage config={config} onSave={handleSave} onBack={handleBack} />}
-          {!inPage && page === 'general' && <GeneralPage config={config} onSave={handleSave} onBack={handleBack} />}
-          {inPage && (
+          {inPage && page === 'providers' && <ProvidersPage config={config} onSave={handleSave} onBack={handleBack} />}
+          {inPage && page === 'ports' && <PortsPage config={config} onSave={handleSave} onBack={handleBack} />}
+          {inPage && page === 'router' && <RouterPage config={config} onSave={handleSave} onBack={handleBack} />}
+          {inPage && page === 'detectors' && <DetectorsPage config={config} onSave={handleSave} onBack={handleBack} />}
+          {inPage && page === 'general' && <GeneralPage config={config} onSave={handleSave} onBack={handleBack} />}
+          {!inPage && (
             <Box flexDirection="column">
               <Text dimColor>Select a section and press Enter to edit.</Text>
               <Box marginTop={1} flexDirection="column">
