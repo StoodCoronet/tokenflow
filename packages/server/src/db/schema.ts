@@ -85,6 +85,25 @@ export function getApiKey(id: string) {
   return getDb().prepare('SELECT * FROM api_keys WHERE id = ?').get(id)
 }
 
+export function updateApiKey(id: string, data: { name?: string; provider?: string; upstream_key?: string; base_url?: string; scenario?: string }) {
+  const db = getDb()
+  const now = timestamp()
+  const sets: string[] = []
+  const values: any[] = []
+  for (const [key, val] of Object.entries(data)) {
+    if (val !== undefined) {
+      sets.push(`${key} = ?`)
+      values.push(val)
+    }
+  }
+  if (sets.length === 0) return getApiKey(id)
+  sets.push('updated_at = ?')
+  values.push(now)
+  values.push(id)
+  db.prepare(`UPDATE api_keys SET ${sets.join(', ')} WHERE id = ?`).run(...values)
+  return getApiKey(id)
+}
+
 export function deleteApiKey(id: string) {
   return getDb().prepare('DELETE FROM api_keys WHERE id = ?').run(id)
 }

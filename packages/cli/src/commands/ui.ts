@@ -11,7 +11,6 @@ export function openUI(): void {
   if (!status.running) {
     console.log(chalk.gray('Server not running, starting...'))
     startServer()
-    // wait a moment for server to start
     status = getServerStatus()
   }
 

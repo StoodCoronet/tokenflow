@@ -1,5 +1,5 @@
 import chalk from 'chalk'
-import { getServerStatus, readPid, removePid } from '../utils/processManager.js'
+import { getServerStatus, removePid } from '../utils/processManager.js'
 
 export function stopServer(): void {
   const status = getServerStatus()
