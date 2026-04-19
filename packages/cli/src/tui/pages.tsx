@@ -5,94 +5,137 @@ import type { AppConfig, Provider } from '@tokenflow/shared'
 
 // ── Providers Page ──────────────────────────────────────────
 
+type View = 'list' | 'edit'
+
 export function ProvidersPage({ config, onSave, onBack }: {
   config: AppConfig
   onSave: (c: AppConfig) => void
   onBack: () => void
 }) {
-  const [idx, setIdx] = useState(0)
-  const [editing, setEditing] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const [draft, setDraft] = useState<Provider | null>(null)
-
   const providers = config.Providers
-  const current = editing ? draft! : providers[idx]
+  const [view, setView] = useState<View>('list')
+  const [idx, setIdx] = useState(0)
+  const [saved, setSaved] = useState(false)
+
+  // list has N providers + 1 "Add new" row at bottom
+  const rows = providers.length + 1
+  const effectiveIdx = Math.min(idx, rows - 1)
 
   useInput((input, key) => {
-    if (editing) {
-      if (key.leftArrow) { setEditing(false); setDraft(null) }
-      return
-    }
+    if (view === 'edit') return
     if (key.leftArrow) { onBack(); return }
-    if (key.upArrow && idx > 0) { setIdx(idx - 1); setSaved(false) }
-    if (key.downArrow && idx < providers.length - 1) { setIdx(idx + 1); setSaved(false) }
+    if (key.upArrow && effectiveIdx > 0) { setIdx(effectiveIdx - 1); setSaved(false) }
+    if (key.downArrow && effectiveIdx < rows - 1) { setIdx(effectiveIdx + 1); setSaved(false) }
+
     if (key.rightArrow || key.return) {
-      if (!providers.length) return
-      setDraft({ ...providers[idx] })
-      setEditing(true)
       setSaved(false)
+      if (effectiveIdx === providers.length) {
+        // "Add new" row → enter edit with empty provider
+        setView('edit')
+      } else {
+        // Existing provider → enter edit
+        setView('edit')
+      }
     }
   })
 
-  const save = (updated: Provider) => {
+  const handleSave = (provider: Provider, isNew: boolean) => {
     const newProviders = [...providers]
-    newProviders[idx] = updated
+    if (isNew) {
+      newProviders.push(provider)
+      setIdx(newProviders.length) // move to newly added
+    } else {
+      newProviders[effectiveIdx] = provider
+    }
     onSave({ ...config, Providers: newProviders })
-    setEditing(false)
-    setDraft(null)
+    setView('list')
     setSaved(true)
+  }
+
+  const handleDelete = () => {
+    if (effectiveIdx >= providers.length) return
+    const name = providers[effectiveIdx].name
+    const newProviders = providers.filter((_, i) => i !== effectiveIdx)
+    onSave({ ...config, Providers: newProviders })
+    setIdx(Math.max(0, effectiveIdx - 1))
+    setSaved(true)
+  }
+
+  if (view === 'edit') {
+    const isNew = effectiveIdx === providers.length
+    const existing = isNew ? { name: '', api_base_url: '', api_key: '', models: [] } : providers[effectiveIdx]
+    return (
+      <ProviderEditForm
+        isNew={isNew}
+        provider={existing}
+        onSave={(p) => handleSave(p, isNew)}
+        onCancel={() => setView('list')}
+      />
+    )
   }
 
   return (
     <Box flexDirection="column">
       <Text bold color="cyan">Providers</Text>
       <Box marginTop={1} flexDirection="column">
-        <Text dimColor>{idx + 1}/{providers.length} — {providers[idx]?.name || 'none'}</Text>
-        <Box marginTop={1} flexDirection="column">
-          {current ? (
-            <>
-              <FieldRow label="Name" value={current.name} editing={editing} />
-              <FieldRow label="Base URL" value={current.api_base_url} editing={editing} />
-              <FieldRow label="API Key" value={current.api_key.slice(0, 8) + '***'} />
-              <FieldRow label="Models" value={current.models.join(', ')} />
-            </>
-          ) : (
-            <Text dimColor>No providers configured</Text>
-          )}
+        {providers.map((p, i) => (
+          <Box key={p.name}>
+            <Text color={i === effectiveIdx ? 'cyan' : 'white'} bold={i === effectiveIdx}>
+              {i === effectiveIdx ? '› ' : '  '}{p.name}
+            </Text>
+            <Text dimColor> — {p.models.join(', ') || 'no models'}</Text>
+          </Box>
+        ))}
+        <Box>
+          <Text color={effectiveIdx === providers.length ? 'green' : 'gray'} bold={effectiveIdx === providers.length}>
+            {effectiveIdx === providers.length ? '› ' : '  '}+ Add new provider
+          </Text>
         </Box>
       </Box>
-      {editing && <ProviderEditForm provider={draft!} onSave={save} />}
-      {!editing && saved && <SuccessMsg text="Saved" />}
+
+      {effectiveIdx < providers.length && (
+        <Box marginTop={1} flexDirection="column">
+          <Text dimColor>── {providers[effectiveIdx].name} ──</Text>
+          <FieldRow label="Base URL" value={providers[effectiveIdx].api_base_url} />
+          <FieldRow label="API Key" value={providers[effectiveIdx].api_key.slice(0, 8) + '***'} />
+          <FieldRow label="Models" value={providers[effectiveIdx].models.join(', ')} />
+        </Box>
+      )}
+
+      {saved && <SuccessMsg text="Saved" />}
       <Box marginTop={1}>
-        <Text dimColor>↑↓ switch │ → edit │ ← back</Text>
+        <Text dimColor>↑↓ select │ → edit/add │ ← back</Text>
       </Box>
     </Box>
   )
 }
 
-function ProviderEditForm({ provider, onSave }: {
+function ProviderEditForm({ isNew, provider, onSave, onCancel }: {
+  isNew: boolean
   provider: Provider
   onSave: (p: Provider) => void
+  onCancel: () => void
 }) {
   const [field, setField] = useState(0)
   const [values, setValues] = useState({
     name: provider.name,
-    api_base_url: provider.api_base_url,
+    api_base_url: provider.api_base_url || 'https://api.openai.com',
     api_key: provider.api_key,
     models: provider.models.join(', '),
   })
   const fields = ['name', 'api_base_url', 'api_key', 'models'] as const
+  const labels = ['Name', 'Base URL', 'API Key', 'Models (comma-sep)'] as const
 
   useInput((input, key) => {
-    if (key.leftArrow) { onSave(provider); return }
+    if (key.leftArrow) { onCancel(); return }
     if (key.return) {
       if (field < fields.length - 1) { setField(field + 1) }
       else {
+        if (!values.name.trim()) return
         onSave({
-          ...provider,
-          name: values.name,
-          api_base_url: values.api_base_url,
-          api_key: values.api_key,
+          name: values.name.trim(),
+          api_base_url: values.api_base_url.trim(),
+          api_key: values.api_key.trim(),
           models: values.models.split(',').map(m => m.trim()).filter(Boolean),
         })
       }
@@ -110,12 +153,16 @@ function ProviderEditForm({ provider, onSave }: {
   })
 
   return (
-    <Box flexDirection="column" marginTop={1} borderStyle="round" borderColor="yellow" paddingX={1}>
-      <Text color="yellow" bold>Edit Provider</Text>
-      {fields.map((f, i) => (
-        <FieldRow key={f} label={f} value={values[f]} editing={i === field} />
-      ))}
-      <Text dimColor>Enter next │ Enter on last = save │ ← cancel</Text>
+    <Box flexDirection="column">
+      <Text bold color="yellow">{isNew ? 'Add Provider' : 'Edit Provider'}</Text>
+      <Box marginTop={1} flexDirection="column">
+        {fields.map((f, i) => (
+          <FieldRow key={f} label={labels[i]} value={values[f]} editing={i === field} />
+        ))}
+      </Box>
+      <Box marginTop={1}>
+        <Text dimColor>Enter next │ Enter on last = save │ ← cancel</Text>
+      </Box>
     </Box>
   )
 }
