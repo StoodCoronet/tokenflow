@@ -8,7 +8,8 @@
   },
   "scripts": {
     "build": "esbuild src/cli.ts --bundle --platform=node --format=esm --outdir=dist --banner:js='#!/usr/bin/env node' --packages=external",
-    "dev": "tsx --watch src/cli.ts"
+    "dev": "tsx --watch src/cli.ts",
+    "tui": "tsx src/cli.ts -- config"
   },
   "dependencies": {
     "@inquirer/prompts": "^7.3.0",

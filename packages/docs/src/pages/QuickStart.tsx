@@ -21,7 +21,7 @@ pnpm build`}</code></pre>
         <p className="text-tf-muted leading-relaxed">
           使用 <code>tflow config</code> 进入交互式配置界面，或手动编辑配置文件。
         </p>
-        <pre><code>{`# 交互式配置（推荐）
+        <pre><code>{`# 交互式配置（TUI，推荐）
 tflow config
 
 # 或手动创建配置文件
@@ -52,6 +52,40 @@ cat > ~/.tokenflow/config.json5 << 'EOF'
   LOG_LEVEL: "info"
 }
 EOF`}</code></pre>
+      </section>
+
+      <section className="space-y-3">
+        <h3 className="text-lg font-semibold text-tf-text">TUI 配置指南</h3>
+        <p className="text-tf-muted leading-relaxed">
+          运行 <code>tflow config</code> 进入全屏终端配置界面。无需浏览器，纯键盘操作即可完成所有配置。
+        </p>
+        <pre><code>{`# 启动 TUI
+pnpm --filter @tokenflow/cli tui
+
+# 或在构建后直接使用
+tflow config`}</code></pre>
+        <p className="text-tf-muted leading-relaxed">
+          常用快捷键：
+        </p>
+        <ul className="list-disc list-inside text-tf-muted space-y-1 ml-2">
+          <li><code>↑↓</code> — 侧边栏切换菜单项，页面内切换字段</li>
+          <li><code>→ / Enter</code> — 进入当前页面（从预览切换到编辑模式）</li>
+          <li><code>←</code> — 返回侧边栏（从编辑模式切回预览）</li>
+          <li><code>w</code> — 保存当前页面修改（Provider Edit / Ports / Router / General 均支持）</li>
+          <li><code>q</code> — 退出 TUI</li>
+        </ul>
+        <p className="text-tf-muted leading-relaxed mt-2">
+          各页面功能：
+        </p>
+        <ul className="list-disc list-inside text-tf-muted space-y-1 ml-2">
+          <li><strong>Overview</strong> — 查看当前配置概览</li>
+          <li><strong>Providers</strong> — 添加 / 编辑 / 删除上游 Provider</li>
+          <li><strong>Ports</strong> — 设置代理和 Web UI 端口</li>
+          <li><strong>Router</strong> — 开关智能路由，设置默认 Provider</li>
+          <li><strong>Detectors</strong> — 启用或禁用上下文检测器</li>
+          <li><strong>General</strong> — 修改日志级别和数据库路径</li>
+          <li><strong>Config</strong> — 在 vim / nano 中直接编辑原始配置文件</li>
+        </ul>
       </section>
 
       <section className="space-y-3">

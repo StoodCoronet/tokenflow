@@ -4,7 +4,7 @@ export default function ConfigReference() {
       <h2 className="text-2xl font-bold text-tf-text">配置参考</h2>
       <p className="text-tf-muted">
         配置文件位于 <code>~/.tokenflow/config.json5</code>，支持 JSON5 格式（注释、尾逗号）。
-        可通过 <code>tflow config</code> 或 Web UI 的 Settings 页面编辑。
+        可通过 <code>tflow config</code>（TUI 终端界面）或 Web UI 的 Settings 页面编辑。
       </p>
 
       <pre><code>{`{

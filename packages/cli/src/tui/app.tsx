@@ -1,17 +1,19 @@
 import React, { useState, useCallback } from 'react'
 import { Box, Text, useInput, useApp, useStdout } from 'ink'
-import { ProvidersPage, PortsPage, RouterPage, DetectorsPage, GeneralPage } from './pages.js'
+import { OverviewPage, ProvidersPage, PortsPage, RouterPage, DetectorsPage, GeneralPage, ConfigPage } from './pages.js'
 import { loadConfig, saveConfig } from '../utils/configLoader.js'
 import type { AppConfig } from '@tokenflow/shared'
 
-type Page = 'providers' | 'ports' | 'router' | 'detectors' | 'general'
+type Page = 'overview' | 'providers' | 'ports' | 'router' | 'detectors' | 'general' | 'config'
 
 const pages: { key: Page; label: string }[] = [
+  { key: 'overview', label: 'Overview' },
   { key: 'providers', label: 'Providers' },
   { key: 'ports', label: 'Ports' },
   { key: 'router', label: 'Router' },
   { key: 'detectors', label: 'Detectors' },
   { key: 'general', label: 'General' },
+  { key: 'config', label: 'Config' },
 ]
 
 export function TuiApp() {
@@ -21,7 +23,7 @@ export function TuiApp() {
   const termWidth = stdout?.columns || 80
 
   const [selected, setSelected] = useState(0)
-  const [page, setPage] = useState<Page>('providers')
+  const [page, setPage] = useState<Page>('overview')
   const [config, setConfig] = useState<AppConfig>(loadConfig())
   const [inPage, setInPage] = useState(false)
 
@@ -90,23 +92,13 @@ export function TuiApp() {
 
         {/* Content */}
         <Box flexGrow={1} flexDirection="column" paddingX={1}>
-          {inPage && page === 'providers' && <ProvidersPage config={config} onSave={handleSave} onBack={handleBack} />}
-          {inPage && page === 'ports' && <PortsPage config={config} onSave={handleSave} onBack={handleBack} />}
-          {inPage && page === 'router' && <RouterPage config={config} onSave={handleSave} onBack={handleBack} />}
-          {inPage && page === 'detectors' && <DetectorsPage config={config} onSave={handleSave} onBack={handleBack} />}
-          {inPage && page === 'general' && <GeneralPage config={config} onSave={handleSave} onBack={handleBack} />}
-          {!inPage && (
-            <Box flexDirection="column">
-              <Text dimColor>Select a section and press Enter to edit.</Text>
-              <Box marginTop={1} flexDirection="column">
-                <Text>Providers: <Text color="green">{config.Providers.length}</Text></Text>
-                <Text>Server Port: <Text color="cyan">{config.PORT}</Text></Text>
-                <Text>UI Port: <Text color="cyan">{config.UI_PORT}</Text></Text>
-                <Text>Router: <Text color={config.Router.enabled ? 'green' : 'red'}>{config.Router.enabled ? 'ON' : 'OFF'}</Text></Text>
-                <Text>Log Level: <Text color="cyan">{config.LOG_LEVEL}</Text></Text>
-              </Box>
-            </Box>
-          )}
+          {page === 'overview' && <OverviewPage config={config} active={inPage} onBack={handleBack} />}
+          {page === 'providers' && <ProvidersPage config={config} active={inPage} onSave={handleSave} onBack={handleBack} />}
+          {page === 'ports' && <PortsPage config={config} active={inPage} onSave={handleSave} onBack={handleBack} />}
+          {page === 'router' && <RouterPage config={config} active={inPage} onSave={handleSave} onBack={handleBack} />}
+          {page === 'detectors' && <DetectorsPage config={config} active={inPage} onSave={handleSave} onBack={handleBack} />}
+          {page === 'general' && <GeneralPage config={config} active={inPage} onSave={handleSave} onBack={handleBack} />}
+          {page === 'config' && <ConfigPage active={inPage} onBack={handleBack} />}
         </Box>
       </Box>
 

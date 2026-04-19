@@ -1,14 +1,41 @@
 import React, { useState } from 'react'
-import { Box, Text, useInput } from 'ink'
+import { Box, Text, useInput, useApp } from 'ink'
 import { FieldRow, ToggleRow, SuccessMsg } from './components.js'
+import { setPendingEditor } from './state.js'
+import { getConfigPath } from '../utils/configLoader.js'
 import type { AppConfig, Provider } from '@tokenflow/shared'
+
+// ── Overview Page ───────────────────────────────────────────
+
+export function OverviewPage({ config, active, onBack }: {
+  config: AppConfig
+  active?: boolean
+  onBack: () => void
+}) {
+  return (
+    <Box flexDirection="column">
+      <Text bold color="cyan">Overview</Text>
+      <Box marginTop={1} flexDirection="column">
+        <Text>Providers: <Text color="green">{config.Providers.length}</Text></Text>
+        <Text>Server Port: <Text color="cyan">{config.PORT}</Text></Text>
+        <Text>UI Port: <Text color="cyan">{config.UI_PORT}</Text></Text>
+        <Text>Router: <Text color={config.Router.enabled ? 'green' : 'red'}>{config.Router.enabled ? 'ON' : 'OFF'}</Text></Text>
+        <Text>Log Level: <Text color="cyan">{config.LOG_LEVEL}</Text></Text>
+      </Box>
+      <Box marginTop={1}>
+        <Text dimColor wrap="wrap">Quick overview of current configuration. Use ← to return to sidebar.</Text>
+      </Box>
+    </Box>
+  )
+}
 
 // ── Providers Page ──────────────────────────────────────────
 
 type View = 'list' | 'edit'
 
-export function ProvidersPage({ config, onSave, onBack }: {
+export function ProvidersPage({ config, active, onSave, onBack }: {
   config: AppConfig
+  active?: boolean
   onSave: (c: AppConfig) => void
   onBack: () => void
 }) {
@@ -22,6 +49,7 @@ export function ProvidersPage({ config, onSave, onBack }: {
   const effectiveIdx = Math.min(idx, rows - 1)
 
   useInput((input, key) => {
+    if (!active) return
     if (view === 'edit') return
     if (key.leftArrow) { onBack(); return }
     if (key.upArrow && effectiveIdx > 0) { setIdx(effectiveIdx - 1); setSaved(false) }
@@ -96,13 +124,16 @@ export function ProvidersPage({ config, onSave, onBack }: {
       {effectiveIdx < providers.length && (
         <Box marginTop={1} flexDirection="column">
           <Text dimColor>── {providers[effectiveIdx].name} ──</Text>
-          <FieldRow label="Base URL" value={providers[effectiveIdx].api_base_url} />
+          <FieldRow label="Base URL" value={providers[effectiveIdx].api_base_url.length > 40 ? providers[effectiveIdx].api_base_url.slice(0, 40) + '…' : providers[effectiveIdx].api_base_url} />
           <FieldRow label="API Key" value={providers[effectiveIdx].api_key.slice(0, 8) + '***'} />
           <FieldRow label="Models" value={providers[effectiveIdx].models.join(', ')} />
         </Box>
       )}
 
       {saved && <SuccessMsg text="Saved" />}
+      <Box marginTop={1}>
+        <Text dimColor wrap="wrap">Manage LLM providers: base URL, API key, and model list.</Text>
+      </Box>
       <Box marginTop={1}>
         <Text dimColor>↑↓ select │ → edit/add │ ← back</Text>
       </Box>
@@ -119,7 +150,7 @@ function ProviderEditForm({ isNew, provider, onSave, onCancel }: {
   const [field, setField] = useState(0)
   const [values, setValues] = useState({
     name: provider.name,
-    api_base_url: provider.api_base_url || 'https://api.openai.com',
+    api_base_url: provider.api_base_url || '',
     api_key: provider.api_key,
     models: provider.models.join(', '),
   })
@@ -128,6 +159,8 @@ function ProviderEditForm({ isNew, provider, onSave, onCancel }: {
 
   useInput((input, key) => {
     if (key.leftArrow) { onCancel(); return }
+    if (key.upArrow) { setField(Math.max(0, field - 1)); return }
+    if (key.downArrow) { setField(Math.min(fields.length - 1, field + 1)); return }
     if (key.return) {
       if (field < fields.length - 1) { setField(field + 1) }
       else {
@@ -141,7 +174,17 @@ function ProviderEditForm({ isNew, provider, onSave, onCancel }: {
       }
       return
     }
-    if (key.backspace) {
+    if (input === 'w' && input.length === 1) {
+      if (!values.name.trim()) return
+      onSave({
+        name: values.name.trim(),
+        api_base_url: values.api_base_url.trim(),
+        api_key: values.api_key.trim(),
+        models: values.models.split(',').map(m => m.trim()).filter(Boolean),
+      })
+      return
+    }
+    if (key.backspace || key.delete) {
       const k = fields[field]
       setValues({ ...values, [k]: values[k].slice(0, -1) })
       return
@@ -161,7 +204,10 @@ function ProviderEditForm({ isNew, provider, onSave, onCancel }: {
         ))}
       </Box>
       <Box marginTop={1}>
-        <Text dimColor>Enter next │ Enter on last = save │ ← cancel</Text>
+        <Text dimColor wrap="wrap">Enter the provider details. Name is required.</Text>
+      </Box>
+      <Box marginTop={1}>
+        <Text dimColor>↑↓ select field │ Enter next/save │ w save │ ← cancel</Text>
       </Box>
     </Box>
   )
@@ -169,8 +215,9 @@ function ProviderEditForm({ isNew, provider, onSave, onCancel }: {
 
 // ── Ports Page ──────────────────────────────────────────────
 
-export function PortsPage({ config, onSave, onBack }: {
+export function PortsPage({ config, active, onSave, onBack }: {
   config: AppConfig
+  active?: boolean
   onSave: (c: AppConfig) => void
   onBack: () => void
 }) {
@@ -182,21 +229,27 @@ export function PortsPage({ config, onSave, onBack }: {
   const [saved, setSaved] = useState(false)
   const fields = ['PORT', 'UI_PORT'] as const
 
+  const doSave = () => {
+    onSave({
+      ...config,
+      PORT: parseInt(values.PORT, 10) || config.PORT,
+      UI_PORT: parseInt(values.UI_PORT, 10) || config.UI_PORT,
+    })
+    setSaved(true)
+  }
+
   useInput((input, key) => {
+    if (!active) return
     if (key.leftArrow) { onBack(); return }
+    if (key.upArrow) { setField(Math.max(0, field - 1)); return }
+    if (key.downArrow) { setField(Math.min(fields.length - 1, field + 1)); return }
     if (key.return) {
       if (field < fields.length - 1) { setField(field + 1) }
-      else {
-        onSave({
-          ...config,
-          PORT: parseInt(values.PORT, 10) || config.PORT,
-          UI_PORT: parseInt(values.UI_PORT, 10) || config.UI_PORT,
-        })
-        setSaved(true)
-      }
+      else { doSave() }
       return
     }
-    if (key.backspace) {
+    if (input === 'w' && input.length === 1) { doSave(); return }
+    if (key.backspace || key.delete) {
       const k = fields[field]
       setValues({ ...values, [k]: values[k].slice(0, -1) })
       return
@@ -217,7 +270,10 @@ export function PortsPage({ config, onSave, onBack }: {
       </Box>
       {saved && <SuccessMsg text="Saved" />}
       <Box marginTop={1}>
-        <Text dimColor>Enter next/save │ ← back</Text>
+        <Text dimColor wrap="wrap">Proxy server port and Web dashboard port.</Text>
+      </Box>
+      <Box marginTop={1}>
+        <Text dimColor>↑↓ select field │ Enter next/save │ w save │ ← back</Text>
       </Box>
     </Box>
   )
@@ -225,8 +281,9 @@ export function PortsPage({ config, onSave, onBack }: {
 
 // ── Router Page ─────────────────────────────────────────────
 
-export function RouterPage({ config, onSave, onBack }: {
+export function RouterPage({ config, active, onSave, onBack }: {
   config: AppConfig
+  active?: boolean
   onSave: (c: AppConfig) => void
   onBack: () => void
 }) {
@@ -237,19 +294,25 @@ export function RouterPage({ config, onSave, onBack }: {
   })
   const [saved, setSaved] = useState(false)
 
+  const doSave = () => {
+    onSave({ ...config, Router: { ...config.Router, ...values } })
+    setSaved(true)
+  }
+
   useInput((input, key) => {
+    if (!active) return
     if (key.leftArrow) { onBack(); return }
     if (key.return) {
       if (field === 0) {
         setValues({ ...values, enabled: !values.enabled })
       } else if (field === 1) {
-        onSave({ ...config, Router: { ...config.Router, ...values } })
-        setSaved(true)
+        doSave()
       }
       return
     }
     if (key.upArrow || key.downArrow) { setField(field === 0 ? 1 : 0) }
-    if (key.backspace && field === 1) {
+    if (input === 'w' && input.length === 1) { doSave(); return }
+    if ((key.backspace || key.delete) && field === 1) {
       setValues({ ...values, default: values.default.slice(0, -1) })
       return
     }
@@ -267,7 +330,10 @@ export function RouterPage({ config, onSave, onBack }: {
       </Box>
       {saved && <SuccessMsg text="Saved" />}
       <Box marginTop={1}>
-        <Text dimColor>↑↓ switch │ Enter toggle/save │ ← back</Text>
+        <Text dimColor wrap="wrap">Auto-route requests to providers based on detector results.</Text>
+      </Box>
+      <Box marginTop={1}>
+        <Text dimColor>↑↓ switch │ Enter toggle/save │ w save │ ← back</Text>
       </Box>
     </Box>
   )
@@ -275,8 +341,9 @@ export function RouterPage({ config, onSave, onBack }: {
 
 // ── Detectors Page ──────────────────────────────────────────
 
-export function DetectorsPage({ config, onSave, onBack }: {
+export function DetectorsPage({ config, active, onSave, onBack }: {
   config: AppConfig
+  active?: boolean
   onSave: (c: AppConfig) => void
   onBack: () => void
 }) {
@@ -285,6 +352,7 @@ export function DetectorsPage({ config, onSave, onBack }: {
   const [saved, setSaved] = useState(false)
 
   useInput((input, key) => {
+    if (!active) return
     if (key.leftArrow) { onBack(); return }
     if (key.upArrow && idx > 0) { setIdx(idx - 1); setSaved(false) }
     if (key.downArrow && idx < entries.length - 1) { setIdx(idx + 1); setSaved(false) }
@@ -307,7 +375,10 @@ export function DetectorsPage({ config, onSave, onBack }: {
       </Box>
       {saved && <SuccessMsg text="Saved" />}
       <Box marginTop={1}>
-        <Text dimColor>↑↓ switch │ Enter toggle │ ← back</Text>
+        <Text dimColor wrap="wrap">Enable or disable content detectors (e.g. token efficiency analysis).</Text>
+      </Box>
+      <Box marginTop={1}>
+        <Text dimColor>↑↓ switch │ Enter toggle │ w save │ ← back</Text>
       </Box>
     </Box>
   )
@@ -315,8 +386,9 @@ export function DetectorsPage({ config, onSave, onBack }: {
 
 // ── General Page ────────────────────────────────────────────
 
-export function GeneralPage({ config, onSave, onBack }: {
+export function GeneralPage({ config, active, onSave, onBack }: {
   config: AppConfig
+  active?: boolean
   onSave: (c: AppConfig) => void
   onBack: () => void
 }) {
@@ -328,17 +400,23 @@ export function GeneralPage({ config, onSave, onBack }: {
   const [saved, setSaved] = useState(false)
   const fields = ['LOG_LEVEL', 'DATABASE'] as const
 
+  const doSave = () => {
+    onSave({ ...config, ...values })
+    setSaved(true)
+  }
+
   useInput((input, key) => {
+    if (!active) return
     if (key.leftArrow) { onBack(); return }
+    if (key.upArrow) { setField(Math.max(0, field - 1)); return }
+    if (key.downArrow) { setField(Math.min(fields.length - 1, field + 1)); return }
     if (key.return) {
       if (field < fields.length - 1) { setField(field + 1) }
-      else {
-        onSave({ ...config, ...values })
-        setSaved(true)
-      }
+      else { doSave() }
       return
     }
-    if (key.backspace) {
+    if (input === 'w' && input.length === 1) { doSave(); return }
+    if (key.backspace || key.delete) {
       const k = fields[field]
       setValues({ ...values, [k]: values[k].slice(0, -1) })
       return
@@ -359,7 +437,59 @@ export function GeneralPage({ config, onSave, onBack }: {
       </Box>
       {saved && <SuccessMsg text="Saved" />}
       <Box marginTop={1}>
-        <Text dimColor>Enter next/save │ ← back</Text>
+        <Text dimColor wrap="wrap">Global settings: log level and SQLite database path.</Text>
+      </Box>
+      <Box marginTop={1}>
+        <Text dimColor>↑↓ select field │ Enter next/save │ w save │ ← back</Text>
+      </Box>
+    </Box>
+  )
+}
+
+// ── Config Page ─────────────────────────────────────────────
+
+export function ConfigPage({ active, onBack }: {
+  active?: boolean
+  onBack: () => void
+}) {
+  const { exit } = useApp()
+  const [idx, setIdx] = useState(0)
+  const editors = ['vim', 'nano']
+  const configPath = getConfigPath()
+
+  useInput((input, key) => {
+    if (!active) return
+    if (key.leftArrow) { onBack(); return }
+    if (key.upArrow && idx > 0) { setIdx(idx - 1); return }
+    if (key.downArrow && idx < editors.length - 1) { setIdx(idx + 1); return }
+    if (key.return) {
+      setPendingEditor(editors[idx])
+      exit()
+      return
+    }
+  })
+
+  return (
+    <Box flexDirection="column">
+      <Text bold color="cyan">Config Editor</Text>
+      <Box marginTop={1} flexDirection="column">
+        <Text dimColor>File:</Text>
+        <Text>{configPath}</Text>
+      </Box>
+      <Box marginTop={1} flexDirection="column">
+        {editors.map((e, i) => (
+          <Box key={e}>
+            <Text color={i === idx ? 'cyan' : 'white'} bold={i === idx}>
+              {i === idx ? '› ' : '  '}{e}
+            </Text>
+          </Box>
+        ))}
+      </Box>
+      <Box marginTop={1}>
+        <Text dimColor wrap="wrap">Open the raw config file in your preferred editor. Changes are saved automatically.</Text>
+      </Box>
+      <Box marginTop={1}>
+        <Text dimColor>↑↓ select │ Enter open │ ← back</Text>
       </Box>
     </Box>
   )
