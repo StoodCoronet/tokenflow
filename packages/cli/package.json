@@ -11,12 +11,14 @@
     "dev": "tsx --watch src/cli.ts"
   },
   "dependencies": {
-    "@tokenflow/shared": "workspace:*",
     "@inquirer/prompts": "^7.3.0",
+    "@tokenflow/shared": "workspace:*",
     "chalk": "^5.4.0",
     "commander": "^13.1.0",
+    "ink": "^4.4.1",
     "json5": "^2.2.3",
-    "open": "^10.1.0"
+    "open": "^10.1.0",
+    "react": "^19.2.5"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
