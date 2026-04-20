@@ -1,39 +1,58 @@
-import type { Transformer } from './base.js'
-import { OpenAITransformer } from './openai.js'
-import { AnthropicTransformer } from './anthropic.js'
-import { DashScopeTransformer } from './dashscope.js'
-import { MiniMaxTransformer } from './minimax.js'
-import { ZhipuTransformer } from './zhipu.js'
-import { MoonshotTransformer } from './moonshot.js'
+import type { MainTransformer, ProviderTransformer } from './base.js'
+import { OpenAIMainTransformer, OpenAIProviderTransformer } from './openai.js'
+import { AnthropicMainTransformer } from './anthropic.js'
 
-const registry = new Map<string, Transformer>()
+// ── Dual Registry ──
 
-function register(t: Transformer) {
-  registry.set(t.name, t)
+const mainTransformers = new Map<string, MainTransformer>()
+const providerTransformers = new Map<string, ProviderTransformer>()
+
+function registerMain(t: MainTransformer) {
+  mainTransformers.set(t.endPoint, t)
+}
+
+function registerProvider(t: ProviderTransformer) {
+  providerTransformers.set(t.name, t)
 }
 
 // Register built-in transformers
-register(new OpenAITransformer())
-register(new AnthropicTransformer())
-register(new DashScopeTransformer())
-register(new MiniMaxTransformer())
-register(new ZhipuTransformer())
-register(new MoonshotTransformer())
+registerMain(new OpenAIMainTransformer())
+registerMain(new AnthropicMainTransformer())
 
-/** Get transformer by provider name */
-export function getTransformer(name: string): Transformer | null {
-  return registry.get(name) ?? null
+registerProvider(new OpenAIProviderTransformer())
+
+// ── Public API ──
+
+/** Get main transformer by endpoint path (e.g. '/v1/messages') */
+export function getMainTransformer(url: string): MainTransformer {
+  // Match by endpoint prefix — handle /v1/messages, /v1/chat/completions, etc.
+  for (const [endPoint, transformer] of mainTransformers) {
+    if (url.startsWith(endPoint)) return transformer
+  }
+  // Default to OpenAI for unknown endpoints under /v1/
+  return mainTransformers.get('/v1/chat/completions')!
 }
 
-/** Register a custom transformer at runtime */
-export function registerTransformer(t: Transformer): void {
-  register(t)
+/** Get provider transformer by provider name */
+export function getProviderTransformer(name: string): ProviderTransformer | null {
+  return providerTransformers.get(name) ?? providerTransformers.get('openai') ?? null
 }
 
-/** Get all registered transformers */
-export function getAllTransformers(): Map<string, Transformer> {
-  return new Map(registry)
+/** Register a custom main transformer at runtime */
+export function registerMainTransformer(t: MainTransformer): void {
+  registerMain(t)
 }
 
-export { OpenAITransformer, AnthropicTransformer, DashScopeTransformer, MiniMaxTransformer, ZhipuTransformer, MoonshotTransformer }
-export type { Transformer, InternalRequest, ProviderRequest, InternalResponse, ProviderConfig, TransformContext } from './base.js'
+/** Register a custom provider transformer at runtime */
+export function registerProviderTransformer(t: ProviderTransformer): void {
+  registerProvider(t)
+}
+
+// ── Exports ──
+
+export { OpenAIMainTransformer, OpenAIProviderTransformer, AnthropicMainTransformer }
+export type {
+  MainTransformer, ProviderTransformer,
+  UnifiedChatRequest, UnifiedMessage, UnifiedTool, UnifiedContent,
+  ProviderConfig, ProviderRequest, TransformContext,
+} from './base.js'

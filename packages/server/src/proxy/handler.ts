@@ -2,8 +2,8 @@ import type { FastifyRequest, FastifyReply } from 'fastify'
 import { generateId } from '@tokenflow/shared'
 import { getApiKey, insertRequestLog, upsertSession, getSession } from '../db/schema.js'
 import { runDetectors } from '../detectors/index.js'
-import { getTransformer } from '../transformers/index.js'
-import type { InternalRequest, TransformContext } from '../transformers/base.js'
+import { getMainTransformer, getProviderTransformer } from '../transformers/index.js'
+import type { TransformContext } from '../transformers/base.js'
 import { resolveRoute } from './router.js'
 import { loadConfig } from '../configLoader.js'
 
@@ -38,33 +38,21 @@ export async function proxyHandler(request: FastifyRequest, reply: FastifyReply)
     return reply.code(400).send({ error: { message: `No provider "${providerName}" configured` } })
   }
 
-  // Get transformer for the target provider
-  const transformer = getTransformer(providerName) || getTransformer('openai')!
+  // Select transformers
+  const mainTransformer = getMainTransformer(request.url)
+  const providerTransformer = getProviderTransformer(providerName) || getProviderTransformer('openai')!
 
   const ctx: TransformContext = {
     provider: { api_base_url: provider.api_base_url, api_key: provider.api_key, models: provider.models },
     isStream: body.stream === true,
   }
 
-  // Build internal request (normalize incoming body)
-  let internal: InternalRequest = body
-  if (transformer.transformRequestIn) {
-    internal = await transformer.transformRequestIn(body, ctx)
-  }
-  internal.model = targetModel || internal.model
+  // Layer 1: Main transformer — client format → IR
+  const unified = await mainTransformer.transformRequestOut(body, ctx)
+  unified.model = targetModel || unified.model
 
-  // Format request for the upstream provider
-  let upstream: { url: string; headers: Record<string, string>; body: unknown }
-  if (transformer.transformRequestOut) {
-    upstream = await transformer.transformRequestOut(internal, ctx)
-  } else {
-    // Fallback: raw pass-through
-    upstream = {
-      url: `${provider.api_base_url}/v1/chat/completions`,
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${provider.api_key}` },
-      body: internal,
-    }
-  }
+  // Layer 2: Provider transformer — IR → provider format
+  const upstream = await providerTransformer.transformRequestIn(unified, ctx)
 
   try {
     const response = await fetch(upstream.url, {
@@ -78,15 +66,15 @@ export async function proxyHandler(request: FastifyRequest, reply: FastifyReply)
       return reply.code(response.status).send(errBody)
     }
 
-    // Transform response if needed
-    let finalResponse = response
-    if (transformer.transformResponseIn) {
-      finalResponse = await transformer.transformResponseIn(response, ctx)
-    }
+    // Layer 2: Provider transformer — provider response → IR
+    const irResponse = await providerTransformer.transformResponseOut(response, ctx)
+
+    // Layer 1: Main transformer — IR → client format
+    const clientResponse = await mainTransformer.transformResponseIn(irResponse, ctx)
 
     const isStream = body.stream === true
 
-    if (isStream && finalResponse.body) {
+    if (isStream && clientResponse.body) {
       // Stream response back
       reply.raw.writeHead(200, {
         'Content-Type': 'text/event-stream',
@@ -97,7 +85,7 @@ export async function proxyHandler(request: FastifyRequest, reply: FastifyReply)
       let fullContent = ''
       let usage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
 
-      const reader = finalResponse.body.getReader()
+      const reader = clientResponse.body.getReader()
       const decoder = new TextDecoder()
 
       try {
@@ -133,7 +121,7 @@ export async function proxyHandler(request: FastifyRequest, reply: FastifyReply)
 
     } else {
       // Non-stream response
-      const rawResponse = await finalResponse.json()
+      const rawResponse = await clientResponse.json()
       const usage = extractUsage(rawResponse)
 
       const sessionId = body.session_id || `auto-${generateId().slice(0, 8)}`

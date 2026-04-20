@@ -1,5 +1,5 @@
 import type { AppConfig, RouterConfig } from '@tokenflow/shared'
-import type { InternalRequest } from '../transformers/base.js'
+import type { UnifiedChatRequest } from '../transformers/base.js'
 
 export interface RouteResult {
   providerName: string
@@ -11,7 +11,7 @@ export interface RouteResult {
  * Smart router — selects the best provider+model based on request content.
  * Only active when Router.enabled is true.
  */
-export function resolveRoute(request: InternalRequest, config: AppConfig): RouteResult | null {
+export function resolveRoute(request: UnifiedChatRequest, config: AppConfig): RouteResult | null {
   if (!config.Router.enabled) return null
 
   const router = config.Router

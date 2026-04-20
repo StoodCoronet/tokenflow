@@ -1,17 +1,24 @@
-import type { Transformer, InternalRequest, ProviderRequest, ProviderConfig, TransformContext } from './base.js'
+import type { MainTransformer, ProviderTransformer, UnifiedChatRequest, ProviderRequest, TransformContext } from './base.js'
 
-/**
- * OpenAI transformer — pass-through since OpenAI format IS the internal format.
- */
-export class OpenAITransformer implements Transformer {
+/** OpenAI main transformer — passthrough since IR IS OpenAI format. */
+export class OpenAIMainTransformer implements MainTransformer {
   name = 'openai'
   endPoint = '/v1/chat/completions'
 
-  async transformRequestIn(body: unknown): Promise<InternalRequest> {
-    return body as InternalRequest
+  async transformRequestOut(body: unknown): Promise<UnifiedChatRequest> {
+    return body as UnifiedChatRequest
   }
 
-  async transformRequestOut(request: InternalRequest, context: TransformContext): Promise<ProviderRequest> {
+  async transformResponseIn(response: Response): Promise<Response> {
+    return response
+  }
+}
+
+/** OpenAI provider transformer — passthrough with endpoint/headers construction. */
+export class OpenAIProviderTransformer implements ProviderTransformer {
+  name = 'openai'
+
+  async transformRequestIn(request: UnifiedChatRequest, context: TransformContext): Promise<ProviderRequest> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${context.provider.api_key}`,
@@ -28,9 +35,13 @@ export class OpenAITransformer implements Transformer {
     if (request.tool_choice) body.tool_choice = request.tool_choice
 
     return {
-      url: `${context.provider.api_base_url}${this.endPoint}`,
+      url: `${context.provider.api_base_url}/v1/chat/completions`,
       headers,
       body,
     }
+  }
+
+  async transformResponseOut(response: Response): Promise<Response> {
+    return response
   }
 }
