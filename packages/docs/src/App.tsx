@@ -2,14 +2,18 @@ import { useState } from 'react'
 import Layout from './components/Layout'
 import QuickStart from './pages/QuickStart'
 import Features from './pages/Features'
+import GuiGuide from './pages/GuiGuide'
+import TuiGuide from './pages/TuiGuide'
 import ApiReference from './pages/ApiReference'
 import ConfigReference from './pages/ConfigReference'
 
-type Page = 'quickstart' | 'features' | 'api' | 'config'
+type Page = 'quickstart' | 'features' | 'gui' | 'tui' | 'api' | 'config'
 
 const pages: Record<Page, { title: string; component: () => JSX.Element }> = {
   quickstart: { title: '快速开始', component: QuickStart },
   features: { title: '功能介绍', component: Features },
+  gui: { title: 'GUI 使用指南', component: GuiGuide },
+  tui: { title: 'TUI 使用指南', component: TuiGuide },
   api: { title: 'API 参考', component: ApiReference },
   config: { title: '配置参考', component: ConfigReference },
 }

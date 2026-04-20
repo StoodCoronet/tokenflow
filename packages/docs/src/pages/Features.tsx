@@ -46,37 +46,34 @@ export default function Features() {
       </section>
 
       <section className="space-y-3">
-        <h3 className="text-lg font-semibold text-tf-text">Web Dashboard（GUI）</h3>
+        <h3 className="text-lg font-semibold text-tf-text">交互界面</h3>
         <p className="text-tf-muted leading-relaxed">
-          浏览器中的可视化控制台，提供实时流量监控和数据分析。
+          Token Flow 提供两种配置管理方式：浏览器中的 Web Dashboard（GUI）和终端中的 TUI。
+          两者功能对等，可根据场景选择。
         </p>
-        <ul className="list-disc list-inside text-tf-muted space-y-1 ml-2">
-          <li><strong>Dashboard</strong> — 总请求量、总 token、平均效率、最近请求日志</li>
-          <li><strong>Keys</strong> — API Key 管理（CRUD）</li>
-          <li><strong>Sessions</strong> — 会话列表、统计概览、模式分布、详情分析</li>
-          <li><strong>Analysis</strong> — 会话粒度的检测报告和 token 趋势图</li>
-          <li><strong>Settings</strong> — 配置管理（Provider、检测器、路由、通用设置）</li>
-        </ul>
-      </section>
-
-      <section className="space-y-3">
-        <h3 className="text-lg font-semibold text-tf-text">Terminal UI（TUI）</h3>
-        <p className="text-tf-muted leading-relaxed">
-          全屏终端交互界面，无需浏览器即可查看和修改所有配置。支持键盘导航和实时预览。
-        </p>
-        <ul className="list-disc list-inside text-tf-muted space-y-1 ml-2">
-          <li><strong>Overview</strong> — 配置概览：Provider 数量、端口、路由状态、日志级别</li>
-          <li><strong>Providers</strong> — 增删改上游 Provider（名称、Base URL、API Key、模型列表）</li>
-          <li><strong>Ports</strong> — 代理服务和 Web UI 端口设置</li>
-          <li><strong>Router</strong> — 智能路由开关和默认 Provider 配置</li>
-          <li><strong>Detectors</strong> — 上下文检测器开关管理</li>
-          <li><strong>General</strong> — 日志级别和数据库路径设置</li>
-          <li><strong>Config</strong> — 在 vim 或 nano 中直接编辑原始配置文件</li>
-        </ul>
         <div className="grid grid-cols-2 gap-4 mt-4">
-          <FeatureCard title="键盘导航" desc="↑↓ 切换菜单，→ 进入编辑，← 返回，w 保存，q 退出" />
-          <FeatureCard title="实时预览" desc="侧边栏切换时右侧即时显示对应页面内容，所见即所得" />
+          <div className="border border-tf-border rounded-lg p-4 bg-tf-card">
+            <h4 className="text-sm font-semibold text-tf-text mb-1">Web Dashboard（GUI）</h4>
+            <p className="text-xs text-tf-muted mb-2">
+              浏览器可视化控制台，适合需要图表分析、鼠标操作的场景。
+            </p>
+            <p className="text-xs text-tf-muted">
+              含 Dashboard、Keys、Sessions、Analysis、Settings 五个页面。
+            </p>
+          </div>
+          <div className="border border-tf-border rounded-lg p-4 bg-tf-card">
+            <h4 className="text-sm font-semibold text-tf-text mb-1">Terminal UI（TUI）</h4>
+            <p className="text-xs text-tf-muted mb-2">
+              全屏终端交互界面，无需浏览器，纯键盘操作，适合 SSH 远程或快速修改配置。
+            </p>
+            <p className="text-xs text-tf-muted">
+              含 Overview、Providers、Ports、Router、Detectors、General、Config 七个页面。
+            </p>
+          </div>
         </div>
+        <p className="text-tf-muted text-sm mt-2">
+          详细使用说明请参见左侧导航「GUI 使用指南」和「TUI 使用指南」。
+        </p>
       </section>
 
       <section className="space-y-3">
