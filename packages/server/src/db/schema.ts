@@ -5,10 +5,18 @@ import { expandTilde, generateId, timestamp } from '@tokenflow/shared'
 
 let db: Database.Database | null = null
 
+/** Reset the DB singleton — for testing only */
+export function resetDb(): void {
+  if (db) {
+    db.close()
+    db = null
+  }
+}
+
 export function getDb(dbPath?: string): Database.Database {
   if (db) return db
 
-  const path = expandTilde(dbPath ?? '~/.tokenflow/tokenflow.db')
+  const path = expandTilde(dbPath ?? process.env.TOKENFLOW_DB_PATH ?? '~/.tokenflow/tokenflow.db')
   const dir = dirname(path)
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true })

@@ -6,15 +6,21 @@
   "scripts": {
     "build": "pnpm -r build",
     "dev": "concurrently -n server,ui,docs -c blue,green,yellow \"pnpm --filter @tokenflow/server dev\" \"pnpm --filter @tokenflow/ui dev\" \"pnpm --filter @tokenflow/docs dev\"",
+    "test": "vitest --run",
+    "test:watch": "vitest",
     "clean": "rm -rf packages/*/dist packages/*/node_modules node_modules"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",
+    "tsx": "^4.19.0",
     "typescript": "^5.7.0",
-    "tsx": "^4.19.0"
+    "vitest": "^4.1.4"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild", "better-sqlite3"]
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "better-sqlite3"
+    ]
   },
   "engines": {
     "node": ">=20.0.0",

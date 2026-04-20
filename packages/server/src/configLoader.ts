@@ -5,7 +5,7 @@ import { expandTilde, DEFAULT_CONFIG_PATH, DEFAULT_PORT, DEFAULT_UI_PORT, DEFAUL
 import type { AppConfig } from '@tokenflow/shared'
 
 function getConfigPath(): string {
-  return expandTilde(DEFAULT_CONFIG_PATH)
+  return expandTilde(process.env.TOKENFLOW_CONFIG_PATH ?? DEFAULT_CONFIG_PATH)
 }
 
 export function loadConfig(): AppConfig {
