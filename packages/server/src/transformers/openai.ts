@@ -34,8 +34,11 @@ export class OpenAIProviderTransformer implements ProviderTransformer {
     if (request.tools) body.tools = request.tools
     if (request.tool_choice) body.tool_choice = request.tool_choice
 
+    const base = context.provider.api_base_url.replace(/\/$/, '')
+    const url = base.endsWith('/v1') ? `${base}/chat/completions` : `${base}/v1/chat/completions`
+
     return {
-      url: `${context.provider.api_base_url}/v1/chat/completions`,
+      url,
       headers,
       body,
     }
