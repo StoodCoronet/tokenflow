@@ -1,8 +1,8 @@
-import type { ChatMessage, AnalysisResult, ContextPattern } from '@tokenflow/shared'
+import type { AnalysisResult, ContextPattern } from '@tokenflow/shared'
 import { calculateGrade } from '@tokenflow/shared'
 
 export interface DetectorInput {
-  messages: ChatMessage[]
+  messages: Array<{ role: string; content: string }>
   usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number }
   sessionHistory?: {
     message_count: number

@@ -2,6 +2,7 @@ import Database from 'better-sqlite3'
 import { existsSync, mkdirSync } from 'fs'
 import { dirname } from 'path'
 import { expandTilde, generateId, timestamp } from '@tokenflow/shared'
+import type { ApiKey } from '@tokenflow/shared'
 
 let db: Database.Database | null = null
 
@@ -89,8 +90,8 @@ export function listApiKeys() {
   return getDb().prepare('SELECT id, name, provider, base_url, scenario, created_at, updated_at FROM api_keys').all()
 }
 
-export function getApiKey(id: string) {
-  return getDb().prepare('SELECT * FROM api_keys WHERE id = ?').get(id)
+export function getApiKey(id: string): ApiKey | undefined {
+  return getDb().prepare('SELECT * FROM api_keys WHERE id = ?').get(id) as ApiKey | undefined
 }
 
 export function updateApiKey(id: string, data: { name?: string; provider?: string; upstream_key?: string; base_url?: string; scenario?: string }) {
