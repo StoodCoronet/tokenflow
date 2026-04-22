@@ -1,3 +1,4 @@
+import { APP_NAME, APP_VERSION } from '@tokenflow/shared'
 import { getDb } from './db/schema.js'
 import { loadConfig } from './configLoader.js'
 import { createApp } from './app.js'
@@ -9,8 +10,15 @@ const app = await createApp(config)
 
 try {
   getDb(config.DATABASE)
-  await app.listen({ port, host: '0.0.0.0' })
-  console.log(`Token Flow v${process.env.npm_package_version ?? '0.1.0'} running on port ${port}`)
+  const addr = await app.listen({ port, host: '0.0.0.0' })
+
+  console.log(`
+${APP_NAME} v${APP_VERSION}
+  Server: ${addr}
+  Health: ${addr}/health
+  Proxy:  ${addr}/v1
+  API:    ${addr}/api
+`)
 } catch (err) {
   app.log.error(err)
   process.exit(1)
