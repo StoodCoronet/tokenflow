@@ -76,6 +76,14 @@ export function SettingsView() {
             ))}
           </select>
         </FieldRow>
+        <FieldRow label="Proxy URL">
+          <input
+            value={config.PROXY_URL || ''}
+            onChange={e => setConfig({ ...config, PROXY_URL: e.target.value })}
+            placeholder="http://127.0.0.1:7890"
+            className={inputClass}
+          />
+        </FieldRow>
       </Section>
 
       {/* Detectors */}

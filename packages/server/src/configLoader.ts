@@ -48,5 +48,6 @@ function getDefaultConfig(): AppConfig {
       summarization: { enabled: true },
     },
     LOG_LEVEL: 'info',
+    PROXY_URL: '',
   }
 }

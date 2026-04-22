@@ -5,6 +5,7 @@ import { runDetectors } from '../detectors/index.js'
 import { getMainTransformer, getProviderTransformer } from '../transformers/index.js'
 import type { TransformContext } from '../transformers/base.js'
 import { loadConfig } from '../configLoader.js'
+import { ProxyAgent } from 'undici'
 
 export async function proxyHandler(request: FastifyRequest, reply: FastifyReply) {
   const body = request.body as any
@@ -46,11 +47,15 @@ export async function proxyHandler(request: FastifyRequest, reply: FastifyReply)
   const upstream = await providerTransformer.transformRequestIn(unified, ctx)
 
   try {
-    const response = await fetch(upstream.url, {
+    const fetchOpts: RequestInit & { dispatcher?: any } = {
       method: 'POST',
       headers: upstream.headers,
       body: JSON.stringify(upstream.body),
-    })
+    }
+    if (config.PROXY_URL) {
+      fetchOpts.dispatcher = new ProxyAgent(config.PROXY_URL)
+    }
+    const response = await fetch(upstream.url, fetchOpts)
 
     if (!response.ok) {
       const errBody = await response.text()

@@ -56,6 +56,7 @@ describe('Anthropic Pipeline', () => {
         summarization: { enabled: false },
       },
       LOG_LEVEL: 'silent' as const,
+      PROXY_URL: '',
     }
     writeFileSync(configPath, JSON.stringify(config, null, 2))
 

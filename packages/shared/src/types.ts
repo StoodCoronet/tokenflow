@@ -125,6 +125,7 @@ export interface AppConfig {
   Providers: Provider[]
   Detectors: Record<string, DetectorConfig>
   LOG_LEVEL: string
+  PROXY_URL: string
 }
 
 // --- Detector Interface ---

@@ -338,9 +338,10 @@ export function GeneralPage({ config, active, onSave, onBack }: {
   const [values, setValues] = useState({
     LOG_LEVEL: config.LOG_LEVEL,
     DATABASE: config.DATABASE,
+    PROXY_URL: config.PROXY_URL || '',
   })
   const [saved, setSaved] = useState(false)
-  const fields = ['LOG_LEVEL', 'DATABASE'] as const
+  const fields = ['LOG_LEVEL', 'DATABASE', 'PROXY_URL'] as const
 
   const doSave = () => {
     onSave({ ...config, ...values })
@@ -379,7 +380,7 @@ export function GeneralPage({ config, active, onSave, onBack }: {
       </Box>
       {saved && <SuccessMsg text="Saved" />}
       <Box marginTop={1}>
-        <Text dimColor wrap="wrap">Global settings: log level and SQLite database path.</Text>
+        <Text dimColor wrap="wrap">Global settings: log level, database path, and upstream proxy.</Text>
       </Box>
       <Box marginTop={1}>
         <Text dimColor>↑↓ select field │ Enter next/save │ w save │ ← back</Text>
