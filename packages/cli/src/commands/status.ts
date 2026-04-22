@@ -16,7 +16,7 @@ export function showStatus(): void {
     console.log(`  API: http://localhost:${config.PORT}/v1`)
     console.log(`  UI:  http://localhost:${config.UI_PORT}`)
     console.log(`  DB:  ${config.DATABASE}`)
-    console.log(`  Router: ${config.Router.enabled ? chalk.green('enabled') : chalk.gray('disabled')}`)
+    console.log(`  Providers: ${config.Providers.length}`)
   } else {
     console.log(`  ${chalk.red('●')} Server: ${chalk.red('stopped')}`)
     console.log(chalk.gray('  Run "tflow start" to start the server'))

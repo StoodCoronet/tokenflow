@@ -30,18 +30,41 @@ export function getDb(dbPath?: string): Database.Database {
 }
 
 function migrate(db: Database.Database): void {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS api_keys (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      provider TEXT NOT NULL,
-      upstream_key TEXT NOT NULL,
-      base_url TEXT NOT NULL,
-      scenario TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
+  // Check if api_keys table exists with old schema (has upstream_key column)
+  const hasUpstreamKey = db.prepare(
+    `SELECT 1 FROM pragma_table_info('api_keys') WHERE name = 'upstream_key'`
+  ).get()
 
+  if (hasUpstreamKey) {
+    // Migrate: recreate api_keys without upstream_key and base_url
+    db.exec(`
+      CREATE TABLE api_keys_new (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        scenario TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      INSERT INTO api_keys_new
+        SELECT id, name, provider, scenario, created_at, updated_at FROM api_keys;
+      DROP TABLE api_keys;
+      ALTER TABLE api_keys_new RENAME TO api_keys;
+    `)
+  } else {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS api_keys (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        scenario TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `)
+  }
+
+  db.exec(`
     CREATE TABLE IF NOT EXISTS request_logs (
       id TEXT PRIMARY KEY,
       api_key_id TEXT NOT NULL,
@@ -75,26 +98,26 @@ function migrate(db: Database.Database): void {
 
 // --- API Key CRUD ---
 
-export function createApiKey(data: { name: string; provider: string; upstream_key: string; base_url: string; scenario?: string }) {
+export function createApiKey(data: { name: string; provider: string; scenario?: string }) {
   const db = getDb()
   const id = generateId()
   const now = timestamp()
   db.prepare(`
-    INSERT INTO api_keys (id, name, provider, upstream_key, base_url, scenario, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, data.name, data.provider, data.upstream_key, data.base_url, data.scenario ?? null, now, now)
+    INSERT INTO api_keys (id, name, provider, scenario, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(id, data.name, data.provider, data.scenario ?? null, now, now)
   return { id, ...data, created_at: now, updated_at: now }
 }
 
 export function listApiKeys() {
-  return getDb().prepare('SELECT id, name, provider, base_url, scenario, created_at, updated_at FROM api_keys').all()
+  return getDb().prepare('SELECT id, name, provider, scenario, created_at, updated_at FROM api_keys').all()
 }
 
 export function getApiKey(id: string): ApiKey | undefined {
   return getDb().prepare('SELECT * FROM api_keys WHERE id = ?').get(id) as ApiKey | undefined
 }
 
-export function updateApiKey(id: string, data: { name?: string; provider?: string; upstream_key?: string; base_url?: string; scenario?: string }) {
+export function updateApiKey(id: string, data: { name?: string; provider?: string; scenario?: string }) {
   const db = getDb()
   const now = timestamp()
   const sets: string[] = []

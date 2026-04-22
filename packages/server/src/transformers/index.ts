@@ -1,6 +1,6 @@
 import type { MainTransformer, ProviderTransformer } from './base.js'
 import { OpenAIMainTransformer, OpenAIProviderTransformer } from './openai.js'
-import { AnthropicMainTransformer } from './anthropic.js'
+import { AnthropicMainTransformer, AnthropicProviderTransformer } from './anthropic.js'
 
 // ── Dual Registry ──
 
@@ -20,6 +20,7 @@ registerMain(new OpenAIMainTransformer())
 registerMain(new AnthropicMainTransformer())
 
 registerProvider(new OpenAIProviderTransformer())
+registerProvider(new AnthropicProviderTransformer())
 
 // ── Public API ──
 
@@ -50,7 +51,7 @@ export function registerProviderTransformer(t: ProviderTransformer): void {
 
 // ── Exports ──
 
-export { OpenAIMainTransformer, OpenAIProviderTransformer, AnthropicMainTransformer }
+export { OpenAIMainTransformer, OpenAIProviderTransformer, AnthropicMainTransformer, AnthropicProviderTransformer }
 export type {
   MainTransformer, ProviderTransformer,
   UnifiedChatRequest, UnifiedMessage, UnifiedTool, UnifiedContent,

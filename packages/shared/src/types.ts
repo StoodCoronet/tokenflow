@@ -4,6 +4,7 @@
 
 export interface Provider {
   name: string
+  template: string
   api_base_url: string
   api_key: string
   models: string[]
@@ -13,8 +14,6 @@ export interface ApiKey {
   id: string
   name: string
   provider: string
-  upstream_key: string
-  base_url: string
   scenario?: string
   created_at: string
   updated_at: string
@@ -114,16 +113,6 @@ export interface EfficiencyBreakdown {
 
 // --- Configuration ---
 
-export interface RouterConfig {
-  enabled: boolean
-  default: string  // "provider,model"
-  longContext?: {
-    provider: string
-    model: string
-    threshold: number
-  }
-}
-
 export interface DetectorConfig {
   enabled: boolean
 }
@@ -134,7 +123,6 @@ export interface AppConfig {
   APIKEY: string
   DATABASE: string
   Providers: Provider[]
-  Router: RouterConfig
   Detectors: Record<string, DetectorConfig>
   LOG_LEVEL: string
 }

@@ -45,11 +45,11 @@ describe('Anthropic Pipeline', () => {
       DATABASE: ':memory:',
       Providers: [{
         name: 'openai',
+        template: 'openai',
         api_base_url: mock.url,
         api_key: 'test-key',
         models: ['gpt-4o'],
       }],
-      Router: { enabled: false, default: '' },
       Detectors: {
         fullContext: { enabled: false },
         slidingWindow: { enabled: false },
@@ -71,8 +71,6 @@ describe('Anthropic Pipeline', () => {
     const key = createApiKey({
       name: 'test',
       provider: 'openai',
-      upstream_key: 'test-key',
-      base_url: mock.url,
     })
     apiKeyId = key.id
 

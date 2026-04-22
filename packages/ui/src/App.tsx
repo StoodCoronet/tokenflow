@@ -1,8 +1,8 @@
 import { useState, useEffect, Component } from 'react'
 import type { ReactNode } from 'react'
-import { fetchDashboard, fetchKeys, fetchSessions, createKey, updateKey, deleteKey } from './api'
+import { fetchDashboard, fetchKeys, fetchSessions, createKey, updateKey, deleteKey, fetchConfig } from './api'
 import { ThemeToggle } from './components/ThemeToggle'
-import { KeyModal } from './components/KeyModal'
+import { ProvidersPage } from './components/ProvidersPage'
 import { SessionsOverview } from './components/SessionsOverview'
 import { SessionFiltersBar, filtersToParams, defaultFilters } from './components/SessionFilters'
 import type { SessionFilters } from './components/SessionFilters'
@@ -11,7 +11,7 @@ import { SessionDetail } from './components/SessionDetail'
 import { AnalysisView } from './components/AnalysisView'
 import { SettingsView } from './components/SettingsView'
 
-type Tab = 'dashboard' | 'keys' | 'sessions' | 'analysis' | 'settings'
+type Tab = 'dashboard' | 'providers' | 'sessions' | 'analysis' | 'settings'
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
   state = { error: null as string | null }
@@ -32,7 +32,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: string |
 }
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>('dashboard')
+  const [tab, setTab] = useState<Tab>('providers')
   const [data, setData] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -43,7 +43,7 @@ export default function App() {
     setLoading(true)
 
     const fetcher = tab === 'dashboard' ? fetchDashboard
-      : tab === 'keys' ? fetchKeys
+      : tab === 'providers' ? fetchKeys
       : () => fetchSessions()
 
     fetcher()
@@ -58,7 +58,7 @@ export default function App() {
       <nav className="bg-tf-card border-b border-tf-border px-6 py-3 flex items-center gap-6">
         <h1 className="text-lg font-semibold text-tf-text tracking-tight">Token Flow</h1>
         <div className="flex gap-1">
-          {(['dashboard', 'keys', 'sessions', 'analysis', 'settings'] as Tab[]).map(t => (
+          {(['dashboard', 'providers', 'sessions', 'analysis', 'settings'] as Tab[]).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -100,7 +100,7 @@ export default function App() {
           </div>
         )}
         {!loading && !error && tab === 'dashboard' && <Dashboard data={data} />}
-        {!loading && !error && tab === 'keys' && <ApiKeys data={data} onRefresh={() => { setData(null); setLoading(true); fetchKeys().then(r => setData(r.data)).catch(err => setError(err.message)).finally(() => setLoading(false)) }} />}
+        {tab === 'providers' && <ProvidersPage />}
         {tab === 'sessions' && <SessionsPage />}
         {tab === 'analysis' && <AnalysisView />}
         {tab === 'settings' && <SettingsView />}
@@ -128,74 +128,6 @@ function Dashboard({ data }: { data: any }) {
           log.efficiency_score,
           new Date(log.created_at).toLocaleString(),
         ])}
-      />
-    </div>
-  )
-}
-
-function ApiKeys({ data, onRefresh }: { data: any; onRefresh: () => void }) {
-  const keys = Array.isArray(data) ? data : []
-  const [modal, setModal] = useState<{ open: boolean; initial?: any }>({ open: false })
-
-  const handleSave = async (formData: any) => {
-    if (modal.initial?.id) {
-      const payload = { ...formData }
-      if (!payload.upstream_key) delete payload.upstream_key
-      await updateKey(modal.initial.id, payload)
-    } else {
-      await createKey(formData)
-    }
-    setModal({ open: false })
-    onRefresh()
-  }
-
-  const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Delete key "${name}"?`)) return
-    await deleteKey(id)
-    onRefresh()
-  }
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-medium text-tf-muted uppercase tracking-wide">API Keys</h2>
-        <button
-          onClick={() => setModal({ open: true })}
-          className="px-3 py-1.5 text-sm bg-tf-accent text-white rounded-lg hover:opacity-90"
-        >
-          Add Key
-        </button>
-      </div>
-      {keys.length === 0 ? (
-        <div className="text-tf-muted text-sm py-8 text-center">
-          No API keys yet. Click "Add Key" to create one.
-        </div>
-      ) : (
-        <Table
-          headers={['Name', 'Provider', 'Base URL', 'Scenario', '']}
-          rows={keys.map((key: any) => [
-            key.name,
-            key.provider,
-            <span key="url" className="text-tf-muted">{key.base_url}</span>,
-            key.scenario || '-',
-            <div key="actions" className="flex gap-2">
-              <button
-                onClick={() => setModal({ open: true, initial: key })}
-                className="text-xs text-tf-muted hover:text-tf-accent"
-              >Edit</button>
-              <button
-                onClick={() => handleDelete(key.id, key.name)}
-                className="text-xs text-tf-muted hover:text-red-500"
-              >Delete</button>
-            </div>,
-          ])}
-        />
-      )}
-      <KeyModal
-        open={modal.open}
-        initial={modal.initial}
-        onSubmit={handleSave}
-        onClose={() => setModal({ open: false })}
       />
     </div>
   )

@@ -14,8 +14,6 @@ export async function registerRoutes(app: FastifyInstance) {
     return createApiKey({
       name: body.name,
       provider: body.provider || 'openai',
-      upstream_key: body.upstream_key,
-      base_url: body.base_url,
       scenario: body.scenario,
     })
   })
@@ -32,8 +30,6 @@ export async function registerRoutes(app: FastifyInstance) {
     return updateApiKey(id, {
       name: body.name,
       provider: body.provider,
-      upstream_key: body.upstream_key,
-      base_url: body.base_url,
       scenario: body.scenario,
     })
   })

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, chmodSync } from 'fs'
 import { dirname } from 'path'
 import JSON5 from 'json5'
 import { expandTilde, DEFAULT_CONFIG_PATH, DEFAULT_PORT, DEFAULT_UI_PORT, DEFAULT_DB_PATH } from '@tokenflow/shared'
@@ -15,13 +15,24 @@ export function loadConfig(): AppConfig {
   }
   const raw = readFileSync(configPath, 'utf-8')
   const saved = JSON5.parse(raw)
-  return { ...getDefaultConfig(), ...saved }
+  const config = { ...getDefaultConfig(), ...saved }
+
+  // Backward compatibility: fill missing template on Providers
+  if (config.Providers) {
+    config.Providers = config.Providers.map((p: any) => ({
+      ...p,
+      template: p.template || 'openai',
+    }))
+  }
+
+  return config
 }
 
 export function saveConfig(config: AppConfig): void {
   const configPath = getConfigPath()
   mkdirSync(dirname(configPath), { recursive: true })
   writeFileSync(configPath, JSON5.stringify(config, null, 2))
+  try { chmodSync(configPath, 0o600) } catch {}
 }
 
 function getDefaultConfig(): AppConfig {
@@ -31,7 +42,6 @@ function getDefaultConfig(): AppConfig {
     APIKEY: '',
     DATABASE: expandTilde(DEFAULT_DB_PATH),
     Providers: [],
-    Router: { enabled: false, default: '' },
     Detectors: {
       fullContext: { enabled: true },
       slidingWindow: { enabled: true },

@@ -19,7 +19,6 @@ export function OverviewPage({ config, active, onBack }: {
         <Text>Providers: <Text color="green">{config.Providers.length}</Text></Text>
         <Text>Server Port: <Text color="cyan">{config.PORT}</Text></Text>
         <Text>UI Port: <Text color="cyan">{config.UI_PORT}</Text></Text>
-        <Text>Router: <Text color={config.Router.enabled ? 'green' : 'red'}>{config.Router.enabled ? 'ON' : 'OFF'}</Text></Text>
         <Text>Log Level: <Text color="cyan">{config.LOG_LEVEL}</Text></Text>
       </Box>
       <Box marginTop={1}>
@@ -91,7 +90,7 @@ export function ProvidersPage({ config, active, onSave, onBack }: {
 
   if (view === 'edit') {
     const isNew = effectiveIdx === providers.length
-    const existing = isNew ? { name: '', api_base_url: '', api_key: '', models: [] } : providers[effectiveIdx]
+    const existing = isNew ? { name: '', template: 'openai', api_base_url: '', api_key: '', models: [] } : providers[effectiveIdx]
     return (
       <ProviderEditForm
         isNew={isNew}
@@ -124,6 +123,7 @@ export function ProvidersPage({ config, active, onSave, onBack }: {
       {effectiveIdx < providers.length && (
         <Box marginTop={1} flexDirection="column">
           <Text dimColor>── {providers[effectiveIdx].name} ──</Text>
+          <FieldRow label="Template" value={providers[effectiveIdx].template || 'openai'} />
           <FieldRow label="Base URL" value={providers[effectiveIdx].api_base_url.length > 40 ? providers[effectiveIdx].api_base_url.slice(0, 40) + '…' : providers[effectiveIdx].api_base_url} />
           <FieldRow label="API Key" value={providers[effectiveIdx].api_key.slice(0, 8) + '***'} />
           <FieldRow label="Models" value={providers[effectiveIdx].models.join(', ')} />
@@ -150,12 +150,13 @@ function ProviderEditForm({ isNew, provider, onSave, onCancel }: {
   const [field, setField] = useState(0)
   const [values, setValues] = useState({
     name: provider.name,
+    template: provider.template || 'openai',
     api_base_url: provider.api_base_url || '',
     api_key: provider.api_key,
     models: provider.models.join(', '),
   })
-  const fields = ['name', 'api_base_url', 'api_key', 'models'] as const
-  const labels = ['Name', 'Base URL', 'API Key', 'Models (comma-sep)'] as const
+  const fields = ['name', 'template', 'api_base_url', 'api_key', 'models'] as const
+  const labels = ['Name', 'Template', 'Base URL', 'API Key', 'Models (comma-sep)'] as const
 
   useInput((input, key) => {
     if (key.leftArrow) { onCancel(); return }
@@ -167,6 +168,7 @@ function ProviderEditForm({ isNew, provider, onSave, onCancel }: {
         if (!values.name.trim()) return
         onSave({
           name: values.name.trim(),
+          template: values.template.trim() || 'openai',
           api_base_url: values.api_base_url.trim(),
           api_key: values.api_key.trim(),
           models: values.models.split(',').map(m => m.trim()).filter(Boolean),
@@ -274,66 +276,6 @@ export function PortsPage({ config, active, onSave, onBack }: {
       </Box>
       <Box marginTop={1}>
         <Text dimColor>↑↓ select field │ Enter next/save │ w save │ ← back</Text>
-      </Box>
-    </Box>
-  )
-}
-
-// ── Router Page ─────────────────────────────────────────────
-
-export function RouterPage({ config, active, onSave, onBack }: {
-  config: AppConfig
-  active?: boolean
-  onSave: (c: AppConfig) => void
-  onBack: () => void
-}) {
-  const [field, setField] = useState(0)
-  const [values, setValues] = useState({
-    enabled: config.Router.enabled,
-    default: config.Router.default,
-  })
-  const [saved, setSaved] = useState(false)
-
-  const doSave = () => {
-    onSave({ ...config, Router: { ...config.Router, ...values } })
-    setSaved(true)
-  }
-
-  useInput((input, key) => {
-    if (!active) return
-    if (key.leftArrow) { onBack(); return }
-    if (key.return) {
-      if (field === 0) {
-        setValues({ ...values, enabled: !values.enabled })
-      } else if (field === 1) {
-        doSave()
-      }
-      return
-    }
-    if (key.upArrow || key.downArrow) { setField(field === 0 ? 1 : 0) }
-    if (input === 'w' && input.length === 1) { doSave(); return }
-    if ((key.backspace || key.delete) && field === 1) {
-      setValues({ ...values, default: values.default.slice(0, -1) })
-      return
-    }
-    if (field === 1 && input && input.length === 1 && input >= ' ') {
-      setValues({ ...values, default: values.default + input })
-    }
-  })
-
-  return (
-    <Box flexDirection="column">
-      <Text bold color="cyan">Smart Router</Text>
-      <Box marginTop={1} flexDirection="column">
-        <ToggleRow label="Enabled" value={values.enabled} selected={field === 0} />
-        <FieldRow label="Default" value={values.default} editing={field === 1} />
-      </Box>
-      {saved && <SuccessMsg text="Saved" />}
-      <Box marginTop={1}>
-        <Text dimColor wrap="wrap">Auto-route requests to providers based on detector results.</Text>
-      </Box>
-      <Box marginTop={1}>
-        <Text dimColor>↑↓ switch │ Enter toggle/save │ w save │ ← back</Text>
       </Box>
     </Box>
   )

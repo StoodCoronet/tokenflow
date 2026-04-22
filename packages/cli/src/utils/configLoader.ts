@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, readFileSync, writeFileSync, chmodSync } from 'fs'
 import JSON5 from 'json5'
 import { expandTilde } from '@tokenflow/shared'
 import { DEFAULT_CONFIG_PATH, DEFAULT_PORT, DEFAULT_UI_PORT, DEFAULT_DB_PATH } from '@tokenflow/shared'
@@ -16,10 +16,6 @@ export function getDefaultConfig(): AppConfig {
     APIKEY: '',
     DATABASE: expandTilde(DEFAULT_DB_PATH),
     Providers: [],
-    Router: {
-      enabled: false,
-      default: '',
-    },
     Detectors: {
       fullContext: { enabled: true },
       slidingWindow: { enabled: true },
@@ -41,5 +37,7 @@ export function loadConfig(): AppConfig {
 
 export function saveConfig(config: AppConfig): void {
   ensureConfigDir()
-  writeFileSync(getConfigPath(), JSON5.stringify(config, null, 2))
+  const path = getConfigPath()
+  writeFileSync(path, JSON5.stringify(config, null, 2))
+  try { chmodSync(path, 0o600) } catch {}
 }

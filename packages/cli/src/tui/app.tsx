@@ -1,16 +1,15 @@
 import React, { useState, useCallback } from 'react'
 import { Box, Text, useInput, useApp, useStdout } from 'ink'
-import { OverviewPage, ProvidersPage, PortsPage, RouterPage, DetectorsPage, GeneralPage, ConfigPage } from './pages.js'
+import { OverviewPage, ProvidersPage, PortsPage, DetectorsPage, GeneralPage, ConfigPage } from './pages.js'
 import { loadConfig, saveConfig } from '../utils/configLoader.js'
 import type { AppConfig } from '@tokenflow/shared'
 
-type Page = 'overview' | 'providers' | 'ports' | 'router' | 'detectors' | 'general' | 'config'
+type Page = 'overview' | 'providers' | 'ports' | 'detectors' | 'general' | 'config'
 
 const pages: { key: Page; label: string }[] = [
   { key: 'overview', label: 'Overview' },
   { key: 'providers', label: 'Providers' },
   { key: 'ports', label: 'Ports' },
-  { key: 'router', label: 'Router' },
   { key: 'detectors', label: 'Detectors' },
   { key: 'general', label: 'General' },
   { key: 'config', label: 'Config' },
@@ -95,7 +94,6 @@ export function TuiApp() {
           {page === 'overview' && <OverviewPage config={config} active={inPage} onBack={handleBack} />}
           {page === 'providers' && <ProvidersPage config={config} active={inPage} onSave={handleSave} onBack={handleBack} />}
           {page === 'ports' && <PortsPage config={config} active={inPage} onSave={handleSave} onBack={handleBack} />}
-          {page === 'router' && <RouterPage config={config} active={inPage} onSave={handleSave} onBack={handleBack} />}
           {page === 'detectors' && <DetectorsPage config={config} active={inPage} onSave={handleSave} onBack={handleBack} />}
           {page === 'general' && <GeneralPage config={config} active={inPage} onSave={handleSave} onBack={handleBack} />}
           {page === 'config' && <ConfigPage active={inPage} onBack={handleBack} />}

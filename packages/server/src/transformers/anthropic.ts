@@ -1,4 +1,4 @@
-import type { MainTransformer, UnifiedChatRequest, UnifiedMessage, UnifiedTool, TransformContext } from './base.js'
+import type { MainTransformer, ProviderTransformer, UnifiedChatRequest, UnifiedMessage, UnifiedTool, TransformContext, ProviderRequest } from './base.js'
 
 /**
  * Anthropic main transformer.
@@ -392,5 +392,184 @@ export class AnthropicMainTransformer implements MainTransformer {
         }
       },
     })
+  }
+}
+
+/** Anthropic provider transformer — IR → Anthropic Messages API format. */
+export class AnthropicProviderTransformer implements ProviderTransformer {
+  name = 'anthropic'
+
+  async transformRequestIn(request: UnifiedChatRequest, context: TransformContext): Promise<ProviderRequest> {
+    const base = context.provider.api_base_url.replace(/\/$/, '')
+    const url = base.endsWith('/v1') ? `${base}/messages` : `${base}/v1/messages`
+
+    // Extract system messages
+    const systemMessages = request.messages.filter(m => m.role === 'system')
+    const system = systemMessages.map(m => {
+      if (typeof m.content === 'string') return { type: 'text' as const, text: m.content }
+      if (Array.isArray(m.content)) {
+        return m.content
+          .filter((c: any) => c.type === 'text')
+          .map((c: any) => ({ type: 'text' as const, text: c.text, cache_control: c.cache_control }))
+      }
+      return { type: 'text' as const, text: '' }
+    }).flat()
+
+    // Convert non-system messages
+    const messages = request.messages.filter(m => m.role !== 'system').map(m => {
+      if (m.role === 'tool') {
+        return {
+          role: 'user' as const,
+          content: [{ type: 'tool_result' as const, tool_use_id: m.tool_call_id, content: m.content }],
+        }
+      }
+      if (m.role === 'user' && Array.isArray(m.content)) {
+        return {
+          role: 'user' as const,
+          content: m.content.map((c: any) => {
+            if (c.type === 'image_url') {
+              const url = c.image_url?.url || ''
+              if (url.startsWith('data:')) {
+                const match = url.match(/^data:([^;]+);base64,(.+)$/)
+                if (match) {
+                  return { type: 'image' as const, source: { type: 'base64' as const, media_type: match[1], data: match[2] } }
+                }
+              }
+              return { type: 'image' as const, source: { type: 'url' as const, url } }
+            }
+            return { type: 'text' as const, text: c.text, cache_control: c.cache_control }
+          }),
+        }
+      }
+      if (m.role === 'assistant') {
+        const content: any[] = []
+        if (typeof m.content === 'string' && m.content) {
+          content.push({ type: 'text' as const, text: m.content })
+        }
+        if (m.tool_calls?.length) {
+          for (const tc of m.tool_calls) {
+            content.push({
+              type: 'tool_use' as const,
+              id: tc.id,
+              name: tc.function.name,
+              input: typeof tc.function.arguments === 'string' ? JSON.parse(tc.function.arguments) : tc.function.arguments,
+            })
+          }
+        }
+        if (m.thinking) {
+          content.push({
+            type: 'thinking' as const,
+            thinking: m.thinking.content,
+            signature: m.thinking.signature,
+          })
+        }
+        return { role: 'assistant' as const, content }
+      }
+      return { role: m.role, content: m.content }
+    })
+
+    const body: any = {
+      model: request.model,
+      messages,
+      max_tokens: request.max_tokens ?? 4096,
+      temperature: request.temperature,
+      stream: request.stream,
+    }
+
+    if (system.length) {
+      body.system = system
+    }
+
+    if (request.tools?.length) {
+      body.tools = request.tools.map(t => ({
+        name: t.function.name,
+        description: t.function.description,
+        input_schema: t.function.parameters,
+      }))
+    }
+
+    if (request.tool_choice) {
+      if (request.tool_choice === 'auto') body.tool_choice = { type: 'auto' }
+      else if (request.tool_choice === 'none') body.tool_choice = { type: 'none' }
+      else if (request.tool_choice === 'required') body.tool_choice = { type: 'any' }
+      else if (typeof request.tool_choice === 'object') {
+        body.tool_choice = { type: 'tool' as const, name: request.tool_choice.function.name }
+      }
+    }
+
+    return {
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': context.provider.api_key,
+        'anthropic-version': '2023-06-01',
+      },
+      body,
+    }
+  }
+
+  async transformResponseOut(response: Response, _context: TransformContext): Promise<Response> {
+    const isStream = response.headers.get('Content-Type')?.includes('text/event-stream')
+    if (isStream && response.body) {
+      // Streaming conversion not yet implemented — pass through
+      return response
+    }
+
+    const data = await response.json() as any
+    const converted = this.convertAnthropicToOpenAI(data)
+    return new Response(JSON.stringify(converted), {
+      status: response.status,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  private convertAnthropicToOpenAI(anthropic: any): any {
+    const content: any[] = anthropic.content || []
+    let textContent = ''
+    const toolCalls: any[] = []
+    let thinking: any = null
+
+    for (const c of content) {
+      if (c.type === 'text') textContent += c.text
+      else if (c.type === 'tool_use') {
+        toolCalls.push({
+          id: c.id,
+          type: 'function',
+          function: { name: c.name, arguments: JSON.stringify(c.input || {}) },
+        })
+      } else if (c.type === 'thinking') {
+        thinking = { content: c.thinking, signature: c.signature }
+      }
+    }
+
+    const choice: any = {
+      index: 0,
+      message: { role: 'assistant', content: textContent || null },
+      finish_reason: this.mapStopReason(anthropic.stop_reason),
+    }
+
+    if (toolCalls.length) choice.message.tool_calls = toolCalls
+    if (thinking) choice.message.thinking = thinking
+
+    return {
+      id: anthropic.id || `msg_${Date.now()}`,
+      model: anthropic.model,
+      choices: [choice],
+      usage: {
+        prompt_tokens: anthropic.usage?.input_tokens || 0,
+        completion_tokens: anthropic.usage?.output_tokens || 0,
+        total_tokens: (anthropic.usage?.input_tokens || 0) + (anthropic.usage?.output_tokens || 0),
+      },
+    }
+  }
+
+  private mapStopReason(reason: string): string {
+    const map: Record<string, string> = {
+      end_turn: 'stop',
+      max_tokens: 'length',
+      tool_use: 'tool_calls',
+      stop_sequence: 'content_filter',
+    }
+    return map[reason] || 'stop'
   }
 }

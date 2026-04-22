@@ -41,23 +41,6 @@ export function SettingsView() {
     })
   }
 
-  const updateProvider = (index: number, field: string, value: any) => {
-    const providers = [...config.Providers]
-    providers[index] = { ...providers[index], [field]: value }
-    setConfig({ ...config, Providers: providers })
-  }
-
-  const addProvider = () => {
-    setConfig({
-      ...config,
-      Providers: [...config.Providers, { name: '', api_base_url: '', api_key: '', models: [] }],
-    })
-  }
-
-  const removeProvider = (index: number) => {
-    setConfig({ ...config, Providers: config.Providers.filter((_: any, i: number) => i !== index) })
-  }
-
   const detectorLabels: Record<string, string> = {
     fullContext: 'Full Context',
     slidingWindow: 'Sliding Window',
@@ -93,97 +76,6 @@ export function SettingsView() {
             ))}
           </select>
         </FieldRow>
-      </Section>
-
-      {/* Providers */}
-      <Section
-        title="Providers"
-        action={<button onClick={addProvider} className="text-sm text-tf-accent hover:underline">+ Add</button>}
-      >
-        {config.Providers.length === 0 ? (
-          <div className="text-tf-muted text-sm py-4">No providers configured.</div>
-        ) : (
-          <div className="space-y-4">
-            {config.Providers.map((p: any, i: number) => (
-              <div key={i} className="bg-tf-bg border border-tf-border rounded-lg p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <input
-                    value={p.name}
-                    onChange={e => updateProvider(i, 'name', e.target.value)}
-                    placeholder="Provider name"
-                    className={inputClass + ' font-medium'}
-                  />
-                  <button onClick={() => removeProvider(i)} className="text-xs text-tf-muted hover:text-red-500 ml-3">Remove</button>
-                </div>
-                <FieldRow label="Base URL">
-                  <input
-                    value={p.api_base_url}
-                    onChange={e => updateProvider(i, 'api_base_url', e.target.value)}
-                    placeholder="https://api.example.com/v1"
-                    className={inputClass}
-                  />
-                </FieldRow>
-                <FieldRow label="API Key">
-                  <input
-                    value={p.api_key}
-                    onChange={e => updateProvider(i, 'api_key', e.target.value)}
-                    placeholder="sk-..."
-                    className={inputClass}
-                  />
-                </FieldRow>
-                <FieldRow label="Models">
-                  <input
-                    value={(p.models || []).join(', ')}
-                    onChange={e => updateProvider(i, 'models', e.target.value.split(',').map((s: string) => s.trim()).filter(Boolean))}
-                    placeholder="model-a, model-b"
-                    className={inputClass}
-                  />
-                </FieldRow>
-              </div>
-            ))}
-          </div>
-        )}
-      </Section>
-
-      {/* Smart Router */}
-      <Section title="Smart Router">
-        <FieldRow label="Enabled">
-          <Toggle checked={config.Router?.enabled ?? false} onChange={v => setConfig({ ...config, Router: { ...config.Router, enabled: v } })} />
-        </FieldRow>
-        <FieldRow label="Default Route">
-          <input
-            value={config.Router?.default ?? ''}
-            onChange={e => setConfig({ ...config, Router: { ...config.Router, default: e.target.value } })}
-            placeholder="provider,model"
-            className={inputClass}
-          />
-        </FieldRow>
-        {config.Router?.longContext && (
-          <>
-            <FieldRow label="Long Context Provider">
-              <input
-                value={config.Router.longContext.provider}
-                onChange={e => setConfig({ ...config, Router: { ...config.Router, longContext: { ...config.Router.longContext, provider: e.target.value } } })}
-                className={inputClass}
-              />
-            </FieldRow>
-            <FieldRow label="Long Context Model">
-              <input
-                value={config.Router.longContext.model}
-                onChange={e => setConfig({ ...config, Router: { ...config.Router, longContext: { ...config.Router.longContext, model: e.target.value } } })}
-                className={inputClass}
-              />
-            </FieldRow>
-            <FieldRow label="Token Threshold">
-              <input
-                type="number"
-                value={config.Router.longContext.threshold}
-                onChange={e => setConfig({ ...config, Router: { ...config.Router, longContext: { ...config.Router.longContext, threshold: parseInt(e.target.value) || 0 } } })}
-                className={inputClass}
-              />
-            </FieldRow>
-          </>
-        )}
       </Section>
 
       {/* Detectors */}

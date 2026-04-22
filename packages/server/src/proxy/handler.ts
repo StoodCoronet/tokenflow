@@ -4,7 +4,6 @@ import { getApiKey, insertRequestLog, upsertSession, getSession } from '../db/sc
 import { runDetectors } from '../detectors/index.js'
 import { getMainTransformer, getProviderTransformer } from '../transformers/index.js'
 import type { TransformContext } from '../transformers/base.js'
-import { resolveRoute } from './router.js'
 import { loadConfig } from '../configLoader.js'
 
 export async function proxyHandler(request: FastifyRequest, reply: FastifyReply) {
@@ -23,15 +22,7 @@ export async function proxyHandler(request: FastifyRequest, reply: FastifyReply)
   const config = loadConfig()
 
   // Determine target provider and model
-  let providerName = apiKey.provider
-  let targetModel = body.model
-
-  // Smart routing (if enabled)
-  const route = resolveRoute(body, config)
-  if (route) {
-    providerName = route.providerName
-    if (!body.model) targetModel = route.model
-  }
+  const providerName = apiKey.provider
 
   const provider = config.Providers.find(p => p.name === providerName)
   if (!provider) {
@@ -40,7 +31,7 @@ export async function proxyHandler(request: FastifyRequest, reply: FastifyReply)
 
   // Select transformers
   const mainTransformer = getMainTransformer(request.url)
-  const providerTransformer = getProviderTransformer(providerName) || getProviderTransformer('openai')!
+  const providerTransformer = getProviderTransformer(provider.template) || getProviderTransformer('openai')!
 
   const ctx: TransformContext = {
     provider: { api_base_url: provider.api_base_url, api_key: provider.api_key, models: provider.models },
@@ -49,7 +40,7 @@ export async function proxyHandler(request: FastifyRequest, reply: FastifyReply)
 
   // Layer 1: Main transformer — client format → IR
   const unified = await mainTransformer.transformRequestOut(body, ctx)
-  unified.model = targetModel || unified.model
+  unified.model = body.model || unified.model
 
   // Layer 2: Provider transformer — IR → provider format
   const upstream = await providerTransformer.transformRequestIn(unified, ctx)
