@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { fetchConfig, updateConfig, fetchKeys, createKey, deleteKey } from '../api'
+import { useState, useEffect, useRef } from 'react'
+import { fetchConfig, updateConfig, fetchKeys, createKey, deleteKey, fetchProviderModels } from '../api'
 
 interface Provider {
   name: string
@@ -8,6 +8,9 @@ interface Provider {
   api_key: string
   models: string[]
 }
+
+type Endpoint = 'chat.completions' | 'messages'
+type Lang = 'curl' | 'python' | 'typescript'
 
 export function ProvidersPage() {
   const [config, setConfig] = useState<any>(null)
@@ -49,7 +52,6 @@ export function ProvidersPage() {
     await updateConfig({ ...config, Providers: newProviders })
 
     if (isNew) {
-      // Auto-create a default key for the new provider
       await createKey({ name: `${form.name} default`, provider: form.name })
     }
 
@@ -90,7 +92,6 @@ export function ProvidersPage() {
 
   return (
     <div className="space-y-6">
-      {/* Provider list */}
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium text-tf-muted uppercase tracking-wide">Providers</h2>
         <button
@@ -106,63 +107,58 @@ export function ProvidersPage() {
           No providers configured. Click "Add Provider" to create one.
         </div>
       ) : (
-        <div className="bg-tf-card border border-tf-border rounded-lg overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-tf-border">
-                <th className="text-left px-4 py-3 text-xs font-medium text-tf-muted uppercase tracking-wide">Name</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-tf-muted uppercase tracking-wide">Template</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-tf-muted uppercase tracking-wide">Base URL</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-tf-muted uppercase tracking-wide">Keys</th>
-                <th className="px-4 py-3"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {providers.map((p) => {
-                const keyCount = keys.filter((k: any) => k.provider === p.name).length
-                const isSelected = selectedProvider === p.name
-                return (
-                  <tr
-                    key={p.name}
-                    className={`border-b border-tf-border last:border-0 cursor-pointer transition-colors ${isSelected ? 'bg-tf-accent/5' : 'hover:bg-tf-border/30'}`}
-                    onClick={() => setSelectedProvider(isSelected ? null : p.name)}
-                  >
-                    <td className="px-4 py-3 text-tf-text font-medium">{p.name}</td>
-                    <td className="px-4 py-3 text-tf-text capitalize">{p.template || 'openai'}</td>
-                    <td className="px-4 py-3 text-tf-muted text-xs">{p.api_base_url}</td>
-                    <td className="px-4 py-3 text-tf-text">{keyCount}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex gap-3 justify-end">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setEditingProvider(p); setShowProviderForm(true) }}
-                          className="text-xs text-tf-muted hover:text-tf-accent"
-                        >Edit</button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleDeleteProvider(p.name) }}
-                          className="text-xs text-tf-muted hover:text-red-500"
-                        >Delete</button>
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {providers.map((p) => {
+            const keyCount = keys.filter((k: any) => k.provider === p.name).length
+            const isSelected = selectedProvider === p.name
+            return (
+              <div
+                key={p.name}
+                onClick={() => setSelectedProvider(isSelected ? null : p.name)}
+                className={`bg-tf-card border rounded-xl p-4 cursor-pointer transition-all ${
+                  isSelected ? 'border-tf-accent ring-1 ring-tf-accent/30' : 'border-tf-border hover:border-tf-accent/50'
+                }`}
+              >
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-semibold text-tf-text">{p.name}</h3>
+                    <span className="text-[10px] px-1.5 py-0.5 bg-tf-border rounded-full capitalize text-tf-muted">
+                      {p.template || 'openai'}
+                    </span>
+                  </div>
+                  <span className="text-xs text-tf-muted">{keyCount} key{keyCount !== 1 ? 's' : ''}</span>
+                </div>
+                <div className="text-xs text-tf-muted truncate mb-3">{p.api_base_url}</div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setEditingProvider(p); setShowProviderForm(true) }}
+                    className="text-xs px-2 py-1 rounded border border-tf-border text-tf-muted hover:text-tf-accent hover:border-tf-accent/50 transition-colors"
+                  >Edit</button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDeleteProvider(p.name) }}
+                    className="text-xs px-2 py-1 rounded border border-tf-border text-tf-muted hover:text-red-500 hover:border-red-500/50 transition-colors"
+                  >Delete</button>
+                </div>
+              </div>
+            )
+          })}
         </div>
       )}
 
-      {/* Provider detail + Keys */}
+      {/* Provider detail + Keys + Examples */}
       {selected && (
-        <div className="bg-tf-card border border-tf-border rounded-lg p-5 space-y-5">
+        <div className="bg-tf-card border border-tf-border rounded-xl p-5 space-y-5">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-tf-text">{selected.name}</h3>
-            <span className="text-xs px-2 py-0.5 bg-tf-border rounded capitalize">{selected.template || 'openai'}</span>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-tf-text">{selected.name}</h3>
+              <span className="text-xs px-2 py-0.5 bg-tf-border rounded capitalize">{selected.template || 'openai'}</span>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
               <div className="text-xs text-tf-muted mb-1">Base URL</div>
-              <div className="text-tf-text">{selected.api_base_url}</div>
+              <div className="text-tf-text text-xs break-all">{selected.api_base_url}</div>
             </div>
             <div>
               <div className="text-xs text-tf-muted mb-1">API Key</div>
@@ -170,7 +166,7 @@ export function ProvidersPage() {
             </div>
             <div className="col-span-2">
               <div className="text-xs text-tf-muted mb-1">Models</div>
-              <div className="text-tf-text">{(selected.models || []).join(', ') || 'All models allowed'}</div>
+              <div className="text-tf-text text-xs">{(selected.models || []).join(', ') || 'All models allowed'}</div>
             </div>
           </div>
 
@@ -207,26 +203,21 @@ export function ProvidersPage() {
               </div>
             )}
 
-            {/* Usage info */}
+            {/* Usage Examples */}
             {providerKeys.length > 0 && (
-              <div className="mt-4 bg-tf-bg border border-tf-border rounded-lg p-3">
-                <div className="text-xs font-medium text-tf-muted mb-2">Endpoint</div>
-                <code className="text-xs text-tf-text font-mono block mb-1">{endpointBase}/v1/chat/completions</code>
-                <code className="text-xs text-tf-text font-mono block mb-2">{endpointBase}/v1/messages</code>
-                <div className="text-xs text-tf-muted mb-1">Example</div>
-                <pre className="text-xs text-tf-text font-mono bg-tf-card p-2 rounded overflow-x-auto">
-{`curl ${endpointBase}/v1/chat/completions \\
-  -H "Content-Type: application/json" \\
-  -H "X-API-Key: ${providerKeys[0]?.id}" \\
-  -d '{"model":"gpt-4","messages":[{"role":"user","content":"Hello"}]}'`}
-                </pre>
+              <div className="mt-4 bg-tf-bg border border-tf-border rounded-lg p-3 space-y-3">
+                <ApiExampleTabs
+                  endpointBase={endpointBase}
+                  apiKey={providerKeys[0]?.id}
+                  template={selected.template || 'openai'}
+                  providerName={selected.name}
+                />
               </div>
             )}
           </div>
         </div>
       )}
 
-      {/* Provider Form Modal */}
       {showProviderForm && (
         <ProviderFormModal
           initial={editingProvider}
@@ -235,7 +226,6 @@ export function ProvidersPage() {
         />
       )}
 
-      {/* Key Form Modal */}
       {showKeyForm && keyFormProvider && (
         <KeyFormModal
           providerName={keyFormProvider}
@@ -245,6 +235,280 @@ export function ProvidersPage() {
       )}
     </div>
   )
+}
+
+function ApiExampleTabs({ endpointBase, apiKey, template, providerName }: {
+  endpointBase: string
+  apiKey: string
+  template: string
+  providerName: string
+}) {
+  const [endpoint, setEndpoint] = useState<Endpoint>('chat.completions')
+  const [lang, setLang] = useState<Lang>('curl')
+  const defaultModel = endpoint === 'messages'
+    ? 'claude-3-5-sonnet-20241022'
+    : template === 'anthropic'
+      ? 'claude-3-5-sonnet'
+      : 'gpt-4'
+  const [customModel, setCustomModel] = useState(defaultModel)
+
+  // Update default model when endpoint/template changes, but only if user hasn't typed something custom
+  useEffect(() => {
+    setCustomModel(prev => {
+      const expected = endpoint === 'messages'
+        ? 'claude-3-5-sonnet-20241022'
+        : template === 'anthropic'
+          ? 'claude-3-5-sonnet'
+          : 'gpt-4'
+      // If current value matches any known default, update it; otherwise keep user's custom value
+      const knownDefaults = ['claude-3-5-sonnet-20241022', 'claude-3-5-sonnet', 'gpt-4']
+      return knownDefaults.includes(prev) ? expected : prev
+    })
+  }, [endpoint, template])
+
+  const url = `${endpointBase}${endpoint === 'chat.completions' ? '/v1/chat/completions' : '/v1/messages'}`
+  const code = makeExample(lang, endpoint, url, apiKey, customModel)
+
+  return (
+    <div className="space-y-3">
+      {/* Endpoint tabs */}
+      <div className="flex gap-1 bg-tf-card rounded-lg p-0.5 w-fit">
+        <button
+          onClick={() => setEndpoint('chat.completions')}
+          className={`text-xs px-3 py-1 rounded-md transition-colors ${
+            endpoint === 'chat.completions' ? 'bg-tf-accent text-white' : 'text-tf-muted hover:text-tf-text'
+          }`}
+        >
+          Chat Completions
+        </button>
+        <button
+          onClick={() => setEndpoint('messages')}
+          className={`text-xs px-3 py-1 rounded-md transition-colors ${
+            endpoint === 'messages' ? 'bg-tf-accent text-white' : 'text-tf-muted hover:text-tf-text'
+          }`}
+        >
+          Messages
+        </button>
+      </div>
+
+      {/* Model input */}
+      <div className="flex items-center gap-2">
+        <label className="text-xs text-tf-muted shrink-0">Model</label>
+        <input
+          value={customModel}
+          onChange={e => setCustomModel(e.target.value)}
+          placeholder="e.g. gpt-4, claude-3-5-sonnet"
+          className="flex-1 min-w-0 rounded border border-tf-border bg-tf-bg px-2 py-1 text-xs text-tf-text focus:border-tf-accent focus:outline-none"
+        />
+      </div>
+
+      {/* Conversion hint */}
+      <ConversionHint endpoint={endpoint} template={template} />
+
+      {/* Language tabs */}
+      <div className="flex gap-3 border-b border-tf-border pb-1">
+        {(['curl', 'python', 'typescript'] as Lang[]).map((l) => (
+          <button
+            key={l}
+            onClick={() => setLang(l)}
+            className={`text-xs pb-1 transition-colors capitalize ${
+              lang === l ? 'text-tf-accent border-b border-tf-accent' : 'text-tf-muted hover:text-tf-text'
+            }`}
+          >
+            {l === 'curl' ? 'cURL' : l}
+          </button>
+        ))}
+      </div>
+
+      <div className="relative">
+        <CopyButton text={code} />
+        <pre className="text-xs text-tf-text font-mono bg-tf-card p-3 pt-8 rounded-lg overflow-x-auto leading-relaxed">
+          <code>{code}</code>
+        </pre>
+      </div>
+
+      <div className="text-xs text-tf-muted">
+        Using key <span className="font-mono text-tf-text">{apiKey.slice(0, 8)}...{apiKey.slice(-4)}</span> via <span className="font-mono text-tf-text">{providerName}</span>
+      </div>
+    </div>
+  )
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // Fallback for older browsers or non-secure contexts
+      const textarea = document.createElement('textarea')
+      textarea.value = text
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    }
+  }
+
+  return (
+    <button
+      onClick={handleCopy}
+      className="absolute top-2 right-2 z-10 text-[11px] px-2 py-1 rounded border border-tf-border bg-tf-bg text-tf-muted hover:text-tf-accent hover:border-tf-accent/50 transition-colors"
+    >
+      {copied ? 'Copied!' : 'Copy'}
+    </button>
+  )
+}
+
+function ConversionHint({ endpoint, template }: { endpoint: Endpoint; template: string }) {
+  const isDirect = (endpoint === 'chat.completions' && template === 'openai') || (endpoint === 'messages' && template === 'anthropic')
+
+  if (isDirect) {
+    const style = endpoint === 'chat.completions' ? 'OpenAI' : 'Anthropic'
+    return (
+      <div className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+        <span>直接转发 — 客户端 {style} 格式 → 上游 {style} 格式，无转换</span>
+      </div>
+    )
+  }
+
+  if (endpoint === 'messages' && template === 'openai') {
+    return (
+      <div className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M7 17l9.2-9.2M17 17V7H7" />
+        </svg>
+        <span>格式转换 — 客户端 Anthropic 格式 → Token Flow 转换为 OpenAI 格式 → 上游 OpenAI 格式</span>
+      </div>
+    )
+  }
+
+  if (endpoint === 'chat.completions' && template === 'anthropic') {
+    return (
+      <div className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M7 17l9.2-9.2M17 17V7H7" />
+        </svg>
+        <span>格式转换 — 客户端 OpenAI 格式 → Token Flow 转换为 Anthropic 格式 → 上游 Anthropic 格式</span>
+      </div>
+    )
+  }
+
+  return null
+}
+
+function makeExample(lang: Lang, endpoint: Endpoint, url: string, apiKey: string, model: string): string {
+  if (lang === 'curl') {
+    if (endpoint === 'chat.completions') {
+      return `curl ${url} \\
+  -H "Content-Type: application/json" \\
+  -H "X-API-Key: ${apiKey}" \\
+  -d '{
+    "model": "${model}",
+    "messages": [
+      {"role": "user", "content": "Hello"}
+    ]
+  }'`
+    }
+    return `curl ${url} \\
+  -H "Content-Type: application/json" \\
+  -H "X-API-Key: ${apiKey}" \\
+  -H "anthropic-version: 2023-06-01" \\
+  -d '{
+    "model": "${model}",
+    "max_tokens": 1024,
+    "messages": [
+      {"role": "user", "content": "Hello"}
+    ]
+  }'`
+  }
+
+  if (lang === 'python') {
+    if (endpoint === 'chat.completions') {
+      return `import requests
+
+response = requests.post(
+    "${url}",
+    headers={
+        "Content-Type": "application/json",
+        "X-API-Key": "${apiKey}",
+    },
+    json={
+        "model": "${model}",
+        "messages": [
+            {"role": "user", "content": "Hello"}
+        ]
+    }
+)
+print(response.json())`
+    }
+    return `import requests
+
+response = requests.post(
+    "${url}",
+    headers={
+        "Content-Type": "application/json",
+        "X-API-Key": "${apiKey}",
+        "anthropic-version": "2023-06-01",
+    },
+    json={
+        "model": "${model}",
+        "max_tokens": 1024,
+        "messages": [
+            {"role": "user", "content": "Hello"}
+        ]
+    }
+)
+print(response.json())`
+  }
+
+  // typescript
+  if (endpoint === 'chat.completions') {
+    return `const response = await fetch("${url}", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "X-API-Key": "${apiKey}",
+  },
+  body: JSON.stringify({
+    model: "${model}",
+    messages: [
+      { role: "user", content: "Hello" }
+    ]
+  })
+});
+
+const data = await response.json();
+console.log(data);`
+  }
+  return `const response = await fetch("${url}", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "X-API-Key": "${apiKey}",
+    "anthropic-version": "2023-06-01",
+  },
+  body: JSON.stringify({
+    model: "${model}",
+    max_tokens: 1024,
+    messages: [
+      { role: "user", content: "Hello" }
+    ]
+  })
+});
+
+const data = await response.json();
+console.log(data);`
 }
 
 function ProviderFormModal({
@@ -324,15 +588,12 @@ function ProviderFormModal({
             />
           </label>
 
-          <label className="block">
-            <span className="text-xs font-medium text-tf-muted">Models (comma separated, leave empty for all)</span>
-            <input
-              value={form.models.join(', ')}
-              onChange={e => setForm({ ...form, models: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
-              placeholder="gpt-4, gpt-3.5-turbo"
-              className="mt-1 block w-full rounded-lg border border-tf-border bg-tf-bg px-3 py-1.5 text-sm text-tf-text placeholder:text-tf-muted/50 focus:border-tf-accent focus:outline-none"
-            />
-          </label>
+          <ModelSelector
+            models={form.models}
+            onChange={models => setForm({ ...form, models })}
+            providerName={form.name}
+            disabled={!form.name || !form.api_base_url}
+          />
 
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className="px-3 py-1.5 text-sm text-tf-muted hover:text-tf-text rounded-lg">Cancel</button>
@@ -342,6 +603,140 @@ function ProviderFormModal({
           </div>
         </form>
       </div>
+    </div>
+  )
+}
+
+function ModelSelector({
+  models,
+  onChange,
+  providerName,
+  disabled,
+}: {
+  models: string[]
+  onChange: (models: string[]) => void
+  providerName: string
+  disabled?: boolean
+}) {
+  const [input, setInput] = useState('')
+  const [available, setAvailable] = useState<string[]>([])
+  const [fetchedAt, setFetchedAt] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [showDropdown, setShowDropdown] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  const loadModels = async () => {
+    if (!providerName) return
+    setLoading(true)
+    try {
+      const res = await fetchProviderModels(providerName)
+      setAvailable(res.data.models || [])
+      setFetchedAt(res.data.fetched_at || null)
+    } catch {
+      // silent fallback
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const filtered = available.filter(
+    m => m.toLowerCase().includes(input.toLowerCase()) && !models.includes(m)
+  )
+
+  const addModel = (model: string) => {
+    if (!models.includes(model)) {
+      onChange([...models, model])
+    }
+    setInput('')
+    setShowDropdown(false)
+  }
+
+  const removeModel = (model: string) => {
+    onChange(models.filter(m => m !== model))
+  }
+
+  return (
+    <div className="block">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs font-medium text-tf-muted">Models</span>
+        <button
+          type="button"
+          onClick={loadModels}
+          disabled={loading || disabled}
+          title={fetchedAt ? `Last fetched: ${fetchedAt}` : 'Fetch available models'}
+          className="text-xs px-2 py-0.5 rounded border border-tf-border text-tf-muted hover:text-tf-accent hover:border-tf-accent/50 transition-colors disabled:opacity-40"
+        >
+          {loading ? '...' : '🔄 Fetch'}
+        </button>
+      </div>
+
+      {/* Tags */}
+      {models.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {models.map(m => (
+            <span
+              key={m}
+              className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-tf-border text-tf-text"
+            >
+              {m}
+              <button
+                type="button"
+                onClick={() => removeModel(m)}
+                className="text-tf-muted hover:text-red-500 leading-none"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Input + Dropdown */}
+      <div className="relative" ref={dropdownRef}>
+        <input
+          value={input}
+          onChange={e => { setInput(e.target.value); setShowDropdown(true) }}
+          onFocus={() => setShowDropdown(true)}
+          placeholder={available.length > 0 ? 'Type to search models...' : 'Type model name and press Enter'}
+          disabled={disabled}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && input.trim()) {
+              e.preventDefault()
+              addModel(input.trim())
+            }
+          }}
+          className="block w-full rounded-lg border border-tf-border bg-tf-bg px-3 py-1.5 text-sm text-tf-text placeholder:text-tf-muted/50 focus:border-tf-accent focus:outline-none disabled:opacity-50"
+        />
+        {showDropdown && filtered.length > 0 && (
+          <div className="absolute z-10 mt-1 w-full max-h-40 overflow-y-auto bg-tf-card border border-tf-border rounded-lg shadow-lg">
+            {filtered.slice(0, 50).map(m => (
+              <div
+                key={m}
+                onClick={() => addModel(m)}
+                className="px-3 py-1.5 text-xs text-tf-text hover:bg-tf-border cursor-pointer truncate"
+              >
+                {m}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {available.length === 0 && !loading && !disabled && (
+        <div className="text-[11px] text-tf-muted mt-1">
+          Click 🔄 Fetch to load available models from upstream, or type manually.
+        </div>
+      )}
     </div>
   )
 }

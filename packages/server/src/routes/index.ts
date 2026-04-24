@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import { getDb, listApiKeys, createApiKey, deleteApiKey, getApiKey, updateApiKey } from '../db/schema.js'
+import { getDb, listApiKeys, createApiKey, deleteApiKey, getApiKey, updateApiKey, insertProviderModels, listProviderModels, clearProviderModels } from '../db/schema.js'
 import { loadConfig, saveConfig } from '../configLoader.js'
 import type { AppConfig, Provider } from '@tokenflow/shared'
 
@@ -123,6 +123,64 @@ export async function registerRoutes(app: FastifyInstance) {
       'SELECT efficiency_score, detected_pattern, created_at FROM request_logs WHERE session_id = ? ORDER BY created_at'
     ).all(session_id)
     return { session_id, logs }
+  })
+
+  // Provider Models
+  app.get('/api/providers/:name/models', async (request) => {
+    const { name } = request.params as { name: string }
+    const config = loadConfig()
+    const provider = config.Providers.find((p: Provider) => p.name === name)
+    if (!provider) {
+      return { models: [], error: 'Provider not found' }
+    }
+
+    // Try to return cached models first
+    const cached = listProviderModels(name)
+    if (cached.length > 0) {
+      return {
+        models: cached.map(c => c.model_id),
+        fetched_at: cached[0].fetched_at,
+      }
+    }
+
+    try {
+      const base = provider.api_base_url.replace(/\/$/, '')
+      let url: string
+      let headers: Record<string, string> = {}
+
+      if (provider.template === 'anthropic') {
+        const anthropicModels = [
+          'claude-3-5-sonnet-20241022',
+          'claude-3-5-sonnet-20240620',
+          'claude-3-opus-20240229',
+          'claude-3-sonnet-20240229',
+          'claude-3-haiku-20240307',
+        ]
+        insertProviderModels(name, anthropicModels)
+        return { models: anthropicModels, fetched_at: timestamp() }
+      }
+
+      // OpenAI-compatible
+      url = base.endsWith('/v1') ? `${base}/models` : `${base}/v1/models`
+      headers = { Authorization: `Bearer ${provider.api_key}` }
+
+      const res = await fetch(url, { headers })
+      if (!res.ok) {
+        return { models: [], error: `Upstream error: ${res.status}` }
+      }
+
+      const data = await res.json() as any
+      const models = (data.data || []).map((m: any) => m.id).filter(Boolean) as string[]
+
+      if (models.length > 0) {
+        clearProviderModels(name)
+        insertProviderModels(name, models)
+      }
+
+      return { models, fetched_at: timestamp() }
+    } catch (err: any) {
+      return { models: [], error: err.message || 'Failed to fetch models' }
+    }
   })
 
   // Config

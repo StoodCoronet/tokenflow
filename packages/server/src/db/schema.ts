@@ -93,7 +93,35 @@ function migrate(db: Database.Database): void {
       current_pattern TEXT,
       FOREIGN KEY (api_key_id) REFERENCES api_keys(id)
     );
+
+    CREATE TABLE IF NOT EXISTS provider_models (
+      provider_name TEXT NOT NULL,
+      model_id TEXT NOT NULL,
+      fetched_at TEXT NOT NULL,
+      PRIMARY KEY (provider_name, model_id)
+    );
   `)
+}
+
+// --- Provider Models CRUD ---
+
+export function insertProviderModels(providerName: string, models: string[]) {
+  const db = getDb()
+  const now = timestamp()
+  const stmt = db.prepare(`INSERT OR REPLACE INTO provider_models (provider_name, model_id, fetched_at) VALUES (?, ?, ?)`)
+  db.transaction(() => {
+    for (const modelId of models) {
+      stmt.run(providerName, modelId, now)
+    }
+  })()
+}
+
+export function listProviderModels(providerName: string) {
+  return getDb().prepare('SELECT model_id, fetched_at FROM provider_models WHERE provider_name = ?').all(providerName) as { model_id: string; fetched_at: string }[]
+}
+
+export function clearProviderModels(providerName: string) {
+  return getDb().prepare('DELETE FROM provider_models WHERE provider_name = ?').run(providerName)
 }
 
 // --- API Key CRUD ---

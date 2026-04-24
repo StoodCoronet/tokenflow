@@ -15,5 +15,6 @@ export const fetchSession = (id: string) => api.get(`/sessions/${id}`)
 export const fetchAnalysis = (sessionId: string) => api.get(`/analysis/${sessionId}`)
 export const fetchConfig = () => api.get('/config')
 export const updateConfig = (data: any) => api.put('/config', data)
+export const fetchProviderModels = (name: string) => api.get(`/providers/${name}/models`)
 
 export default api
