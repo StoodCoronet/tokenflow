@@ -2,7 +2,7 @@ import { GeminiProviderTransformer } from './gemini.js'
 import { AnthropicProviderTransformer } from './anthropic.js'
 import type { ProviderTransformer, UnifiedChatRequest, ProviderRequest, TransformContext } from './base.js'
 
-async function getAccessToken(): Promise<string> {
+export async function getAccessToken(): Promise<string> {
   const { GoogleAuth } = await import('google-auth-library')
   const auth = new GoogleAuth({
     scopes: ['https://www.googleapis.com/auth/cloud-platform'],
@@ -12,7 +12,7 @@ async function getAccessToken(): Promise<string> {
   return accessToken.token || ''
 }
 
-async function resolveProjectId(): Promise<string> {
+export async function resolveProjectId(): Promise<string> {
   let projectId = process.env.GOOGLE_CLOUD_PROJECT
   const location = process.env.GOOGLE_CLOUD_LOCATION || 'us-central1'
 
@@ -38,6 +38,16 @@ async function resolveProjectId(): Promise<string> {
   return projectId
 }
 
+interface VertexAuth {
+  getAccessToken: () => Promise<string>
+  resolveProjectId: () => Promise<string>
+}
+
+const defaultAuth: VertexAuth = {
+  getAccessToken,
+  resolveProjectId,
+}
+
 /**
  * Vertex Gemini provider transformer.
  * Reuses Gemini logic but with GCP OAuth and Vertex-specific URLs.
@@ -45,16 +55,21 @@ async function resolveProjectId(): Promise<string> {
 export class VertexGeminiProviderTransformer implements ProviderTransformer {
   name = 'vertex-gemini'
   private gemini = new GeminiProviderTransformer()
+  private auth: VertexAuth
+
+  constructor(auth?: VertexAuth) {
+    this.auth = auth ?? defaultAuth
+  }
 
   async transformRequestIn(request: UnifiedChatRequest, context: TransformContext): Promise<ProviderRequest> {
-    const projectId = await resolveProjectId()
+    const projectId = await this.auth.resolveProjectId()
     const location = process.env.GOOGLE_CLOUD_LOCATION || 'us-central1'
     const action = request.stream ? 'streamGenerateContent' : 'generateContent'
     const url = `https://${location}-aiplatform.googleapis.com/v1beta1/projects/${projectId}/locations/${location}/publishers/google/models/${request.model}:${action}`
 
     const geminiReq = await this.gemini.transformRequestIn(request, context)
 
-    const accessToken = await getAccessToken()
+    const accessToken = await this.auth.getAccessToken()
 
     return {
       url,
@@ -78,16 +93,21 @@ export class VertexGeminiProviderTransformer implements ProviderTransformer {
 export class VertexClaudeProviderTransformer implements ProviderTransformer {
   name = 'vertex-claude'
   private anthropic = new AnthropicProviderTransformer()
+  private auth: VertexAuth
+
+  constructor(auth?: VertexAuth) {
+    this.auth = auth ?? defaultAuth
+  }
 
   async transformRequestIn(request: UnifiedChatRequest, context: TransformContext): Promise<ProviderRequest> {
-    const projectId = await resolveProjectId()
+    const projectId = await this.auth.resolveProjectId()
     const location = process.env.GOOGLE_CLOUD_LOCATION || 'us-east5'
     const action = request.stream ? 'streamRawPredict' : 'rawPredict'
     const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/anthropic/models/${request.model}:${action}`
 
     const anthropicReq = await this.anthropic.transformRequestIn(request, context)
 
-    const accessToken = await getAccessToken()
+    const accessToken = await this.auth.getAccessToken()
 
     return {
       url,

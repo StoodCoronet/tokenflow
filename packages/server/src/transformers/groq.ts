@@ -102,7 +102,8 @@ export class GroqProviderTransformer implements ProviderTransformer {
                   const data = JSON.parse(line.slice(6))
 
                   if (data.error) {
-                    throw new Error(JSON.stringify(data.error))
+                    controller.error(new Error(JSON.stringify(data.error)))
+                    return
                   }
 
                   if (data.choices?.[0]?.delta?.content && !hasTextContent) {
