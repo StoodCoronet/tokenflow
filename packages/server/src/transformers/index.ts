@@ -1,6 +1,14 @@
 import type { MainTransformer, ProviderTransformer } from './base.js'
 import { OpenAIMainTransformer, OpenAIProviderTransformer } from './openai.js'
 import { AnthropicMainTransformer, AnthropicProviderTransformer } from './anthropic.js'
+import { CerebrasProviderTransformer } from './cerebras.js'
+import { DeepseekProviderTransformer } from './deepseek.js'
+import { GroqProviderTransformer } from './groq.js'
+import { OpenrouterProviderTransformer } from './openrouter.js'
+import { VercelProviderTransformer } from './vercel.js'
+import { GeminiProviderTransformer } from './gemini.js'
+import { VertexGeminiProviderTransformer, VertexClaudeProviderTransformer } from './vertex.js'
+import { OpenAIResponsesProviderTransformer } from './openai-responses.js'
 
 // ── Dual Registry ──
 
@@ -21,6 +29,15 @@ registerMain(new AnthropicMainTransformer())
 
 registerProvider(new OpenAIProviderTransformer())
 registerProvider(new AnthropicProviderTransformer())
+registerProvider(new CerebrasProviderTransformer())
+registerProvider(new DeepseekProviderTransformer())
+registerProvider(new GroqProviderTransformer())
+registerProvider(new OpenrouterProviderTransformer())
+registerProvider(new VercelProviderTransformer())
+registerProvider(new GeminiProviderTransformer())
+registerProvider(new VertexGeminiProviderTransformer())
+registerProvider(new VertexClaudeProviderTransformer())
+registerProvider(new OpenAIResponsesProviderTransformer())
 
 // ── Public API ──
 
@@ -52,6 +69,14 @@ export function registerProviderTransformer(t: ProviderTransformer): void {
 // ── Exports ──
 
 export { OpenAIMainTransformer, OpenAIProviderTransformer, AnthropicMainTransformer, AnthropicProviderTransformer }
+export { CerebrasProviderTransformer } from './cerebras.js'
+export { DeepseekProviderTransformer } from './deepseek.js'
+export { GroqProviderTransformer } from './groq.js'
+export { OpenrouterProviderTransformer } from './openrouter.js'
+export { VercelProviderTransformer } from './vercel.js'
+export { GeminiProviderTransformer } from './gemini.js'
+export { VertexGeminiProviderTransformer, VertexClaudeProviderTransformer } from './vertex.js'
+export { OpenAIResponsesProviderTransformer } from './openai-responses.js'
 export type {
   MainTransformer, ProviderTransformer,
   UnifiedChatRequest, UnifiedMessage, UnifiedTool, UnifiedContent,

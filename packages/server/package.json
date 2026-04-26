@@ -13,6 +13,7 @@
     "@tokenflow/shared": "workspace:*",
     "better-sqlite3": "^11.7.0",
     "fastify": "^5.2.0",
+    "google-auth-library": "^10.6.2",
     "json5": "^2.2.3",
     "tiktoken": "^1.0.21",
     "undici": "^6.25.0"
