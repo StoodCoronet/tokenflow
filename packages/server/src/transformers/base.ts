@@ -67,6 +67,7 @@ export interface ProviderConfig {
   api_base_url: string
   api_key: string
   models: string[]
+  options?: Record<string, any>
 }
 
 export interface ProviderRequest {

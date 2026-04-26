@@ -35,7 +35,12 @@ export async function proxyHandler(request: FastifyRequest, reply: FastifyReply)
   const providerTransformer = getProviderTransformer(provider.template) || getProviderTransformer('openai')!
 
   const ctx: TransformContext = {
-    provider: { api_base_url: provider.api_base_url, api_key: provider.api_key, models: provider.models },
+    provider: {
+      api_base_url: provider.api_base_url,
+      api_key: provider.api_key,
+      models: provider.models,
+      options: provider.options,
+    },
     isStream: body.stream === true,
   }
 
@@ -47,9 +52,13 @@ export async function proxyHandler(request: FastifyRequest, reply: FastifyReply)
   const upstream = await providerTransformer.transformRequestIn(unified, ctx)
 
   try {
+    const upstreamHeaders = {
+      ...upstream.headers,
+      ...(provider.options?.extra_headers || {}),
+    }
     const fetchOpts: RequestInit & { dispatcher?: any } = {
       method: 'POST',
-      headers: upstream.headers,
+      headers: upstreamHeaders,
       body: JSON.stringify(upstream.body),
     }
     if (config.PROXY_URL) {

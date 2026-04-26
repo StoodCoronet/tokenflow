@@ -7,6 +7,7 @@ interface Provider {
   api_base_url: string
   api_key: string
   models: string[]
+  options?: Record<string, any>
 }
 
 type Endpoint = 'chat.completions' | 'messages'
@@ -168,6 +169,12 @@ export function ProvidersPage() {
               <div className="text-xs text-tf-muted mb-1">Models</div>
               <div className="text-tf-text text-xs">{(selected.models || []).join(', ') || 'All models allowed'}</div>
             </div>
+            {selected.options && Object.keys(selected.options).length > 0 && (
+              <div className="col-span-2">
+                <div className="text-xs text-tf-muted mb-1">Options</div>
+                <div className="text-tf-text text-xs font-mono">{JSON.stringify(selected.options)}</div>
+              </div>
+            )}
           </div>
 
           <div className="border-t border-tf-border pt-4">
@@ -404,7 +411,17 @@ function ConversionHint({ endpoint, template }: { endpoint: Endpoint; template: 
     )
   }
 
-  return null
+  // Generic conversion hint for other templates
+  const templateLabel = template.charAt(0).toUpperCase() + template.slice(1)
+  const clientFormat = endpoint === 'messages' ? 'Anthropic' : 'OpenAI'
+  return (
+    <div className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M7 17l9.2-9.2M17 17V7H7" />
+      </svg>
+      <span>格式转换 — 客户端 {clientFormat} 格式 → Token Flow 转换为 {templateLabel} 格式</span>
+    </div>
+  )
 }
 
 function makeExample(lang: Lang, endpoint: Endpoint, url: string, apiKey: string, model: string): string {
@@ -526,7 +543,15 @@ function ProviderFormModal({
     api_base_url: initial?.api_base_url || '',
     api_key: initial?.api_key || '',
     models: initial?.models ? [...initial.models] : [],
+    options: initial?.options ? { ...initial.options } : {},
   })
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [extraHeaders, setExtraHeaders] = useState<{ key: string; value: string }[]>(
+    Object.entries(initial?.options?.extra_headers || {}).map(([key, value]) => ({
+      key,
+      value: String(value),
+    }))
+  )
 
   const isEdit = !!initial
 
@@ -537,7 +562,21 @@ function ProviderFormModal({
         <form
           onSubmit={(e) => {
             e.preventDefault()
-            onSubmit(form)
+            const headers: Record<string, string> = {}
+            for (const h of extraHeaders) {
+              if (h.key.trim()) headers[h.key.trim()] = h.value
+            }
+            const nextOptions: Record<string, any> = { ...form.options }
+            if (Object.keys(headers).length > 0) {
+              nextOptions.extra_headers = headers
+            } else {
+              delete nextOptions.extra_headers
+            }
+            const payload: Provider = {
+              ...form,
+              options: Object.keys(nextOptions).length > 0 ? nextOptions : undefined,
+            }
+            onSubmit(payload)
           }}
           className="space-y-3"
         >
@@ -562,6 +601,15 @@ function ProviderFormModal({
             >
               <option value="openai">OpenAI</option>
               <option value="anthropic">Anthropic</option>
+              <option value="openai-responses">OpenAI (Responses API)</option>
+              <option value="gemini">Gemini</option>
+              <option value="deepseek">DeepSeek</option>
+              <option value="openrouter">OpenRouter</option>
+              <option value="groq">Groq</option>
+              <option value="cerebras">Cerebras</option>
+              <option value="vercel">Vercel</option>
+              <option value="vertex-gemini">Vertex Gemini</option>
+              <option value="vertex-claude">Vertex Claude</option>
             </select>
           </label>
 
@@ -595,9 +643,76 @@ function ProviderFormModal({
             disabled={!form.name || !form.api_base_url}
           />
 
+          {/* Advanced Options */}
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(v => !v)}
+              className="text-xs text-tf-muted hover:text-tf-text flex items-center gap-1"
+            >
+              <span>{showAdvanced ? '▼' : '▶'}</span>
+              Advanced Options
+            </button>
+
+            {showAdvanced && (
+              <div className="mt-3 space-y-3 border border-tf-border rounded-lg p-3 bg-tf-bg/50">
+                {/* Extra Headers */}
+                <div>
+                  <div className="text-xs font-medium text-tf-muted mb-2">Extra Headers</div>
+                  {extraHeaders.length === 0 && (
+                    <div className="text-xs text-tf-muted mb-2">No extra headers configured.</div>
+                  )}
+                  <div className="space-y-2">
+                    {extraHeaders.map((h, i) => (
+                      <div key={i} className="flex gap-2">
+                        <input
+                          value={h.key}
+                          onChange={e => {
+                            const next = [...extraHeaders]
+                            next[i].key = e.target.value
+                            setExtraHeaders(next)
+                          }}
+                          placeholder="Header name"
+                          className="flex-1 min-w-0 rounded border border-tf-border bg-tf-bg px-2 py-1 text-xs text-tf-text placeholder:text-tf-muted/50 focus:border-tf-accent focus:outline-none"
+                        />
+                        <input
+                          value={h.value}
+                          onChange={e => {
+                            const next = [...extraHeaders]
+                            next[i].value = e.target.value
+                            setExtraHeaders(next)
+                          }}
+                          placeholder="Value"
+                          className="flex-1 min-w-0 rounded border border-tf-border bg-tf-bg px-2 py-1 text-xs text-tf-text placeholder:text-tf-muted/50 focus:border-tf-accent focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setExtraHeaders(extraHeaders.filter((_, idx) => idx !== i))}
+                          className="text-xs text-tf-muted hover:text-red-500 px-1"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setExtraHeaders([...extraHeaders, { key: '', value: '' }])}
+                    className="mt-2 text-xs text-tf-accent hover:underline"
+                  >
+                    + Add header
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className="px-3 py-1.5 text-sm text-tf-muted hover:text-tf-text rounded-lg">Cancel</button>
-            <button type="submit" className="px-3 py-1.5 text-sm bg-tf-accent text-white rounded-lg hover:opacity-90">
+            <button
+              type="submit"
+              className="px-3 py-1.5 text-sm bg-tf-accent text-white rounded-lg hover:opacity-90"
+            >
               {isEdit ? 'Save' : 'Create'}
             </button>
           </div>
