@@ -100,6 +100,25 @@ function migrate(db: Database.Database): void {
       fetched_at TEXT NOT NULL,
       PRIMARY KEY (provider_name, model_id)
     );
+
+    CREATE TABLE IF NOT EXISTS stats_aggregates (
+      window_type TEXT NOT NULL,
+      window_start TEXT NOT NULL,
+      api_key_id TEXT NOT NULL,
+      model TEXT,
+      request_count INTEGER DEFAULT 0,
+      prompt_tokens INTEGER DEFAULT 0,
+      completion_tokens INTEGER DEFAULT 0,
+      total_tokens INTEGER DEFAULT 0,
+      avg_efficiency REAL DEFAULT 0,
+      pattern_full_context INTEGER DEFAULT 0,
+      pattern_sliding_window INTEGER DEFAULT 0,
+      pattern_summarization INTEGER DEFAULT 0,
+      estimated_cost REAL DEFAULT 0,
+      PRIMARY KEY (window_type, window_start, api_key_id, model)
+    );
+    CREATE INDEX IF NOT EXISTS idx_stats_window ON stats_aggregates(window_type, window_start);
+    CREATE INDEX IF NOT EXISTS idx_stats_key ON stats_aggregates(api_key_id, window_type, window_start);
   `)
 }
 
@@ -227,4 +246,104 @@ export function upsertSession(data: {
       VALUES (?, ?, ?, ?, 1, ?, ?, ?)
     `).run(data.session_id, data.api_key_id, now, now, data.prompt_tokens, data.completion_tokens, data.detected_pattern)
   }
+}
+
+// --- Stats Aggregation ---
+
+function floorToHour(date: Date): string {
+  const d = new Date(date)
+  d.setMinutes(0, 0, 0)
+  return d.toISOString()
+}
+
+function floorToDay(date: Date): string {
+  const d = new Date(date)
+  d.setHours(0, 0, 0, 0)
+  return d.toISOString()
+}
+
+export function upsertStatsAggregate(log: {
+  api_key_id: string
+  model: string
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+  efficiency_score: number
+  detected_pattern: string | null
+}) {
+  const now = new Date()
+  const hourWindow = floorToHour(now)
+  const dayWindow = floorToDay(now)
+
+  for (const { window_type, window_start } of [
+    { window_type: 'hour', window_start: hourWindow },
+    { window_type: 'day', window_start: dayWindow },
+  ]) {
+    _upsertStatsRow(window_type, window_start, log.api_key_id, log.model, log)
+    _upsertStatsRow(window_type, window_start, log.api_key_id, null, log)
+  }
+}
+
+function _upsertStatsRow(
+  window_type: string,
+  window_start: string,
+  api_key_id: string,
+  model: string | null,
+  log: {
+    prompt_tokens: number
+    completion_tokens: number
+    total_tokens: number
+    efficiency_score: number
+    detected_pattern: string | null
+  }
+) {
+  const db = getDb()
+  const modelVal = model ?? null
+
+  db.prepare(`
+    INSERT OR IGNORE INTO stats_aggregates
+    (window_type, window_start, api_key_id, model, request_count, prompt_tokens, completion_tokens, total_tokens, avg_efficiency)
+    VALUES (?, ?, ?, ?, 0, 0, 0, 0, 0)
+  `).run(window_type, window_start, api_key_id, modelVal)
+
+  const validPatterns = ['full_context', 'sliding_window', 'summarization']
+  const patternCol = log.detected_pattern && validPatterns.includes(log.detected_pattern)
+    ? `pattern_${log.detected_pattern}`
+    : null
+
+  const patternUpdate = patternCol ? `, ${patternCol} = ${patternCol} + 1` : ''
+
+  db.prepare(`
+    UPDATE stats_aggregates SET
+      request_count = request_count + 1,
+      prompt_tokens = prompt_tokens + ?,
+      completion_tokens = completion_tokens + ?,
+      total_tokens = total_tokens + ?,
+      avg_efficiency = (avg_efficiency * request_count + ?) / (request_count + 1)
+      ${patternUpdate}
+    WHERE window_type = ? AND window_start = ? AND api_key_id = ? AND model IS ?
+  `).run(
+    log.prompt_tokens,
+    log.completion_tokens,
+    log.total_tokens,
+    log.efficiency_score,
+    window_type,
+    window_start,
+    api_key_id,
+    modelVal
+  )
+}
+
+export function cleanupOldStats() {
+  getDb().prepare("DELETE FROM stats_aggregates WHERE window_start < datetime('now', '-90 days')").run()
+}
+
+export function getPaginatedRequestLogs(apiKeyId: string, page: number, pageSize: number) {
+  const db = getDb()
+  const offset = (page - 1) * pageSize
+  const items = db.prepare(
+    'SELECT id, model, prompt_tokens, completion_tokens, total_tokens, status, detected_pattern, efficiency_score, created_at, request_data, response_data FROM request_logs WHERE api_key_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?'
+  ).all(apiKeyId, pageSize, offset)
+  const total = (db.prepare('SELECT COUNT(*) as total FROM request_logs WHERE api_key_id = ?').get(apiKeyId) as any).total
+  return { items, total, page, page_size: pageSize }
 }

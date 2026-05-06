@@ -4,7 +4,9 @@ const api = axios.create({
   baseURL: '/api',
 })
 
-export const fetchDashboard = () => api.get('/dashboard')
+export const fetchDashboard = (range?: string) => api.get('/dashboard', { params: range ? { range } : undefined })
+export const fetchKeyDetail = (keyId: string, range?: string, page?: number, pageSize?: number) =>
+  api.get(`/dashboard/keys/${keyId}`, { params: { range, page, page_size: pageSize } })
 export const fetchKeys = () => api.get('/keys')
 export const createKey = (data: any) => api.post('/keys', data)
 export const updateKey = (id: string, data: any) => api.put(`/keys/${id}`, data)

@@ -1,6 +1,6 @@
 import type { FastifyRequest, FastifyReply } from 'fastify'
 import { generateId } from '@tokenflow/shared'
-import { getApiKey, insertRequestLog, upsertSession, getSession } from '../db/schema.js'
+import { getApiKey, insertRequestLog, upsertSession, getSession, upsertStatsAggregate } from '../db/schema.js'
 import { runDetectors } from '../detectors/index.js'
 import { getMainTransformer, getProviderTransformer } from '../transformers/index.js'
 import type { TransformContext } from '../transformers/base.js'
@@ -182,6 +182,16 @@ function logRequest(
     api_key_id: apiKeyId,
     prompt_tokens: usage.prompt_tokens,
     completion_tokens: usage.completion_tokens,
+    detected_pattern: analysis?.detected_pattern ?? null,
+  })
+
+  upsertStatsAggregate({
+    api_key_id: apiKeyId,
+    model: body.model || 'unknown',
+    prompt_tokens: usage.prompt_tokens,
+    completion_tokens: usage.completion_tokens,
+    total_tokens: usage.total_tokens,
+    efficiency_score: analysis?.efficiency_score ?? 0,
     detected_pattern: analysis?.detected_pattern ?? null,
   })
 }

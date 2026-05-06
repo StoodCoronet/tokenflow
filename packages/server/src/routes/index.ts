@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import { getDb, listApiKeys, createApiKey, deleteApiKey, getApiKey, updateApiKey, insertProviderModels, listProviderModels, clearProviderModels } from '../db/schema.js'
+import { getDb, listApiKeys, createApiKey, deleteApiKey, getApiKey, updateApiKey, insertProviderModels, listProviderModels, clearProviderModels, getPaginatedRequestLogs } from '../db/schema.js'
 import { loadConfig, saveConfig } from '../configLoader.js'
 import type { AppConfig, Provider } from '@tokenflow/shared'
 
@@ -35,26 +35,213 @@ export async function registerRoutes(app: FastifyInstance) {
   })
 
   // Dashboard stats
-  app.get('/api/dashboard', async () => {
+  app.get('/api/dashboard', async (request) => {
     const db = getDb()
-    const totalRequests = db.prepare('SELECT COUNT(*) as count FROM request_logs').get() as any
-    const totalTokens = db.prepare('SELECT SUM(total_tokens) as total FROM request_logs').get() as any
-    const avgEfficiency = db.prepare('SELECT AVG(efficiency_score) as avg FROM request_logs').get() as any
-    const recentLogs = db.prepare(
-      'SELECT id, model, prompt_tokens, completion_tokens, total_tokens, status, detected_pattern, efficiency_score, created_at FROM request_logs ORDER BY created_at DESC LIMIT 50'
-    ).all()
-    const sessions = db.prepare(
-      'SELECT * FROM sessions ORDER BY last_activity DESC LIMIT 20'
-    ).all()
+    const query = request.query as any
+    const range = query?.range || '24h'
+    const windowType = ['1h', '6h', '24h'].includes(range) ? 'hour' : 'day'
+    const rangeOffset = {
+      '1h': '-1 hours',
+      '6h': '-6 hours',
+      '24h': '-24 hours',
+      '7d': '-7 days',
+      '30d': '-30 days',
+    }[range as string] || '-24 hours'
+
+    const summary = db.prepare(`
+      SELECT COALESCE(SUM(request_count), 0) as total_requests,
+             COALESCE(SUM(prompt_tokens), 0) as total_prompt,
+             COALESCE(SUM(completion_tokens), 0) as total_completion,
+             COALESCE(SUM(total_tokens), 0) as total_tokens,
+             COALESCE(AVG(avg_efficiency), 0) as avg_efficiency
+      FROM stats_aggregates
+      WHERE window_type = ? AND window_start >= datetime('now', ?) AND model IS NULL
+    `).get(windowType, rangeOffset) as any
+
+    const trend = db.prepare(`
+      SELECT window_start, SUM(request_count) as request_count, SUM(total_tokens) as total_tokens
+      FROM stats_aggregates
+      WHERE window_type = ? AND window_start >= datetime('now', ?) AND model IS NULL
+      GROUP BY window_start
+      ORDER BY window_start ASC
+    `).all(windowType, rangeOffset)
+
+    const keyDistribution = db.prepare(`
+      SELECT s.api_key_id, k.name as key_name, SUM(s.request_count) as request_count, SUM(s.total_tokens) as total_tokens
+      FROM stats_aggregates s
+      LEFT JOIN api_keys k ON s.api_key_id = k.id
+      WHERE s.window_type = ? AND s.window_start >= datetime('now', ?) AND s.model IS NULL
+      GROUP BY s.api_key_id
+      ORDER BY total_tokens DESC
+    `).all(windowType, rangeOffset)
+
+    const modelDistribution = db.prepare(`
+      SELECT model, SUM(request_count) as request_count, SUM(total_tokens) as total_tokens
+      FROM stats_aggregates
+      WHERE window_type = ? AND window_start >= datetime('now', ?) AND model IS NOT NULL
+      GROUP BY model
+      ORDER BY total_tokens DESC
+    `).all(windowType, rangeOffset)
+
+    const gradeDistribution = db.prepare(`
+      SELECT
+        SUM(CASE WHEN efficiency_score >= 80 THEN 1 ELSE 0 END) as A,
+        SUM(CASE WHEN efficiency_score >= 60 AND efficiency_score < 80 THEN 1 ELSE 0 END) as B,
+        SUM(CASE WHEN efficiency_score >= 40 AND efficiency_score < 60 THEN 1 ELSE 0 END) as C,
+        SUM(CASE WHEN efficiency_score < 40 THEN 1 ELSE 0 END) as D
+      FROM request_logs
+      WHERE created_at >= datetime('now', ?)
+    `).get(rangeOffset) as any
+
+    const patternDistribution = db.prepare(`
+      SELECT COALESCE(SUM(pattern_full_context), 0) as full_context,
+             COALESCE(SUM(pattern_sliding_window), 0) as sliding_window,
+             COALESCE(SUM(pattern_summarization), 0) as summarization
+      FROM stats_aggregates
+      WHERE window_type = ? AND window_start >= datetime('now', ?) AND model IS NULL
+    `).get(windowType, rangeOffset) as any
+
+    const totalRequests = summary.total_requests || 0
+    const patternTotal = (patternDistribution.full_context || 0) + (patternDistribution.sliding_window || 0) + (patternDistribution.summarization || 0)
 
     return {
-      total_requests: totalRequests.count,
-      total_tokens: totalTokens.total || 0,
-      avg_efficiency: Math.round(avgEfficiency.avg || 0),
-      recent_logs: recentLogs,
-      sessions,
+      range,
+      window_type: windowType,
+      total_requests: totalRequests,
+      total_prompt_tokens: summary.total_prompt || 0,
+      total_completion_tokens: summary.total_completion || 0,
+      avg_efficiency: Math.round(summary.avg_efficiency || 0),
+      trend,
+      key_distribution: keyDistribution,
+      model_distribution: modelDistribution,
+      grade_distribution: {
+        A: gradeDistribution.A || 0,
+        B: gradeDistribution.B || 0,
+        C: gradeDistribution.C || 0,
+        D: gradeDistribution.D || 0,
+      },
+      pattern_distribution: {
+        full_context: patternDistribution.full_context || 0,
+        sliding_window: patternDistribution.sliding_window || 0,
+        summarization: patternDistribution.summarization || 0,
+        none: Math.max(0, totalRequests - patternTotal),
+      },
+      anomalies: detectAnomalies(db, windowType),
     }
   })
+
+  app.get('/api/dashboard/keys/:key_id', async (request, reply) => {
+    const { key_id } = request.params as { key_id: string }
+    const query = request.query as any
+    const range = query?.range || '24h'
+    const page = Math.max(1, parseInt(query?.page) || 1)
+    const pageSize = Math.min(100, Math.max(1, parseInt(query?.page_size) || 20))
+
+    const windowType = ['1h', '6h', '24h'].includes(range) ? 'hour' : 'day'
+    const rangeOffset = {
+      '1h': '-1 hours',
+      '6h': '-6 hours',
+      '24h': '-24 hours',
+      '7d': '-7 days',
+      '30d': '-30 days',
+    }[range as string] || '-24 hours'
+
+    const db = getDb()
+    const apiKey = db.prepare('SELECT id, name, provider, scenario FROM api_keys WHERE id = ?').get(key_id) as any
+    if (!apiKey) {
+      return reply.code(404).send({ error: 'Key not found' })
+    }
+
+    const summary = db.prepare(`
+      SELECT COALESCE(SUM(request_count), 0) as total_requests,
+             COALESCE(SUM(prompt_tokens), 0) as total_prompt,
+             COALESCE(SUM(completion_tokens), 0) as total_completion,
+             COALESCE(SUM(total_tokens), 0) as total_tokens,
+             COALESCE(AVG(avg_efficiency), 0) as avg_efficiency
+      FROM stats_aggregates
+      WHERE window_type = ? AND window_start >= datetime('now', ?) AND api_key_id = ? AND model IS NULL
+    `).get(windowType, rangeOffset, key_id) as any
+
+    const trend = db.prepare(`
+      SELECT window_start, SUM(request_count) as request_count, SUM(total_tokens) as total_tokens
+      FROM stats_aggregates
+      WHERE window_type = ? AND window_start >= datetime('now', ?) AND api_key_id = ? AND model IS NULL
+      GROUP BY window_start
+      ORDER BY window_start ASC
+    `).all(windowType, rangeOffset, key_id)
+
+    const modelDistribution = db.prepare(`
+      SELECT model, SUM(request_count) as request_count, SUM(total_tokens) as total_tokens
+      FROM stats_aggregates
+      WHERE window_type = ? AND window_start >= datetime('now', ?) AND api_key_id = ? AND model IS NOT NULL
+      GROUP BY model
+      ORDER BY total_tokens DESC
+    `).all(windowType, rangeOffset, key_id)
+
+    const patternDist = db.prepare(`
+      SELECT COALESCE(SUM(pattern_full_context), 0) as full_context,
+             COALESCE(SUM(pattern_sliding_window), 0) as sliding_window,
+             COALESCE(SUM(pattern_summarization), 0) as summarization
+      FROM stats_aggregates
+      WHERE window_type = ? AND window_start >= datetime('now', ?) AND api_key_id = ? AND model IS NULL
+    `).get(windowType, rangeOffset, key_id) as any
+
+    const { items, total } = getPaginatedRequestLogs(key_id, page, pageSize)
+    const totalRequests = summary.total_requests || 0
+    const patternTotal = (patternDist.full_context || 0) + (patternDist.sliding_window || 0) + (patternDist.summarization || 0)
+
+    return {
+      range,
+      api_key: apiKey,
+      summary: {
+        total_requests: totalRequests,
+        total_prompt_tokens: summary.total_prompt || 0,
+        total_completion_tokens: summary.total_completion || 0,
+        avg_efficiency: Math.round(summary.avg_efficiency || 0),
+      },
+      trend,
+      model_distribution: modelDistribution,
+      pattern_distribution: {
+        full_context: patternDist.full_context || 0,
+        sliding_window: patternDist.sliding_window || 0,
+        summarization: patternDist.summarization || 0,
+        none: Math.max(0, totalRequests - patternTotal),
+      },
+      requests: {
+        items,
+        total,
+        page,
+        page_size: pageSize,
+      },
+    }
+  })
+
+  function detectAnomalies(db: ReturnType<typeof getDb>, windowType: string) {
+    const keyIds = db.prepare(`SELECT DISTINCT api_key_id FROM stats_aggregates WHERE window_type = ? AND model IS NULL`).all(windowType) as any[]
+    const anomalies: any[] = []
+    for (const { api_key_id } of keyIds) {
+      const windows = db.prepare(`
+        SELECT window_start, total_tokens
+        FROM stats_aggregates
+        WHERE window_type = ? AND api_key_id = ? AND model IS NULL
+        ORDER BY window_start DESC
+        LIMIT 2
+      `).all(windowType, api_key_id) as any[]
+      if (windows.length === 2 && windows[1].total_tokens > 0) {
+        const factor = windows[0].total_tokens / windows[1].total_tokens
+        if (factor >= 3.0) {
+          const keyName = (db.prepare('SELECT name FROM api_keys WHERE id = ?').get(api_key_id) as any)?.name || api_key_id
+          anomalies.push({
+            api_key_id,
+            key_name: keyName,
+            spike_factor: Math.round(factor * 10) / 10,
+            message: `Token usage increased ${Math.round(factor * 100)}% compared to previous ${windowType}`,
+          })
+        }
+      }
+    }
+    return anomalies
+  }
 
   // Sessions
   app.get('/api/sessions', async (request) => {
