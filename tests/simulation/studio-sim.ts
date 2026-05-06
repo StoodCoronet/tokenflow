@@ -20,9 +20,11 @@
  *   --seed <n>         随机种子 (默认: 42)
  *   --keep             运行结束后保持 server 不退出
  *   --port <n>         Token Flow server 端口 (默认: 随机)
+ *   --load-pattern <p> 负载模式: steady | burst | spike (默认: steady)
+ *   --error-rate <r>   错误注入比例 0-1 (默认: 0)
  *
  * Examples:
- *   # 默认：500 请求，最近 24 小时，6 个 key，4 个 provider
+ *   # 默认：500 请求，最近 24 小时，6 个 key，全部可用 provider
  *   npx tsx tests/simulation/studio-sim.ts
  *
  *   # 快速生成 7 天历史数据
@@ -30,6 +32,9 @@
  *
  *   # 高并发压力测试
  *   npx tsx tests/simulation/studio-sim.ts --requests 5000 --concurrency 50
+ *
+ *   # 突发负载 + 5% 错误注入
+ *   npx tsx tests/simulation/studio-sim.ts --requests 2000 --load-pattern burst --error-rate 0.05
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
@@ -56,6 +61,8 @@ interface SimConfig {
   seed: number
   keep: boolean
   port: number
+  loadPattern: 'steady' | 'burst' | 'spike'
+  errorRate: number
 }
 
 interface SimProvider {
@@ -105,10 +112,14 @@ function parseArgs(): SimConfig {
   }
   const has = (flag: string) => args.includes(flag)
 
+  const loadPattern = get('--load-pattern', 'steady') as 'steady' | 'burst' | 'spike'
+  const providerCount = parseInt(get('--providers', '0'), 10)
+  const availableCount = getAvailableProviders().length
+
   return {
     totalRequests: parseInt(get('--requests', '500'), 10),
     keyCount: parseInt(get('--keys', '6'), 10),
-    providerCount: parseInt(get('--providers', '4'), 10),
+    providerCount: providerCount > 0 ? Math.min(providerCount, availableCount) : availableCount,
     concurrency: parseInt(get('--concurrency', '5'), 10),
     streamRatio: parseFloat(get('--stream', '0.3')),
     days: parseInt(get('--days', '1'), 10),
@@ -116,6 +127,8 @@ function parseArgs(): SimConfig {
     seed: parseInt(get('--seed', '42'), 10),
     keep: has('--keep'),
     port: parseInt(get('--port', '0'), 10),
+    loadPattern: ['steady', 'burst', 'spike'].includes(loadPattern) ? loadPattern : 'steady',
+    errorRate: Math.max(0, Math.min(1, parseFloat(get('--error-rate', '0')))),
   }
 }
 
@@ -194,7 +207,7 @@ function generateResponseContent(): string {
   return result
 }
 
-function startSmartMockUpstream(): Promise<MockUpstream> {
+function startSmartMockUpstream(errorRate = 0): Promise<MockUpstream> {
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     const chunks: Buffer[] = []
     for await (const chunk of req) {
@@ -202,6 +215,26 @@ function startSmartMockUpstream(): Promise<MockUpstream> {
     }
     const bodyText = Buffer.concat(chunks).toString('utf-8')
     const body = bodyText ? JSON.parse(bodyText) : {}
+
+    // Error injection
+    if (errorRate > 0 && rng() < errorRate) {
+      const errType = randInt(1, 3)
+      if (errType === 1) {
+        // 429 Rate Limit
+        res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '1' })
+        res.end(JSON.stringify({ error: { message: 'Rate limit exceeded', type: 'rate_limit_error' } }))
+      } else if (errType === 2) {
+        // 500 Server Error
+        res.writeHead(500, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: { message: 'Internal server error', type: 'internal_error' } }))
+      } else {
+        // Timeout simulation: delay then 504
+        await new Promise((r) => setTimeout(r, 3000))
+        res.writeHead(504, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: { message: 'Gateway timeout', type: 'timeout_error' } }))
+      }
+      return
+    }
 
     const promptTokens = estimatePromptTokens(body.messages || [])
     const completionTokens = randInt(20, 400)
@@ -265,7 +298,7 @@ function startSmartMockUpstream(): Promise<MockUpstream> {
 
 // ── Simulation Data Generation ──
 
-const PROVIDER_TEMPLATES: SimProvider[] = [
+const ALL_PROVIDER_TEMPLATES: SimProvider[] = [
   {
     name: 'openai-prod',
     template: 'openai',
@@ -294,7 +327,65 @@ const PROVIDER_TEMPLATES: SimProvider[] = [
     scenario: 'Data Analysis',
     patternBias: 'random',
   },
+  {
+    name: 'openrouter-prod',
+    template: 'openrouter',
+    models: ['openai/gpt-4o', 'anthropic/claude-3-5-sonnet', 'google/gemini-1.5-pro'],
+    scenario: 'Multi-Model Gateway',
+    patternBias: 'random',
+  },
+  {
+    name: 'groq-inference',
+    template: 'groq',
+    models: ['llama-3.1-70b-versatile', 'mixtral-8x7b-32768', 'gemma-7b-it'],
+    scenario: 'Fast Inference',
+    patternBias: 'sliding_window',
+  },
+  {
+    name: 'cerebras-train',
+    template: 'cerebras',
+    models: ['llama3.1-70b', 'llama3.1-8b'],
+    scenario: 'Training Pipeline',
+    patternBias: 'summarization',
+  },
+  {
+    name: 'vercel-ai',
+    template: 'vercel',
+    models: ['claude-3-5-sonnet', 'gpt-4o', 'gemini-1.5-pro'],
+    scenario: 'Vercel AI SDK',
+    patternBias: 'full_context',
+  },
+  {
+    name: 'vertex-gemini-ml',
+    template: 'vertex-gemini',
+    models: ['gemini-1.5-pro', 'gemini-1.5-flash'],
+    scenario: 'GCP ML Pipeline',
+    patternBias: 'random',
+  },
+  {
+    name: 'vertex-claude-legal',
+    template: 'vertex-claude',
+    models: ['claude-3-5-sonnet', 'claude-3-haiku-20240307'],
+    scenario: 'Legal Document Review',
+    patternBias: 'full_context',
+  },
+  {
+    name: 'openai-responses',
+    template: 'openai-responses',
+    models: ['gpt-4o', 'gpt-4o-mini'],
+    scenario: 'Agent Loop',
+    patternBias: 'sliding_window',
+  },
 ]
+
+function getAvailableProviders(): SimProvider[] {
+  return ALL_PROVIDER_TEMPLATES.filter((p) => {
+    if (p.template.startsWith('vertex')) {
+      return !!(process.env.GOOGLE_CLOUD_PROJECT || process.env.GOOGLE_APPLICATION_CREDENTIALS)
+    }
+    return true
+  })
+}
 
 const USER_QUERIES = [
   'Explain this code',
@@ -391,7 +482,8 @@ function distributeRequests(count: number, days: number): Date[] {
 }
 
 function generateSimulation(cfg: SimConfig): { providers: SimProvider[]; keys: SimKey[]; requests: SimRequest[] } {
-  const providers = PROVIDER_TEMPLATES.slice(0, cfg.providerCount)
+  const allProviders = getAvailableProviders()
+  const providers = allProviders.slice(0, Math.min(cfg.providerCount, allProviders.length))
 
   // Create keys
   const keys: SimKey[] = []
@@ -458,21 +550,65 @@ function generateSimulation(cfg: SimConfig): { providers: SimProvider[]; keys: S
 
 // ── HTTP Execution ──
 
+interface RequestMetrics {
+  total: number
+  success: number
+  errors: number
+  timeouts: number
+  latencies: number[]
+  startTime: number
+  endTime: number
+}
+
 async function executeHttpRequests(
   requests: SimRequest[],
   tfPort: number,
   keyMap: Map<string, string>,
-  concurrency: number
-): Promise<void> {
+  cfg: SimConfig
+): Promise<RequestMetrics> {
+  const metrics: RequestMetrics = {
+    total: requests.length,
+    success: 0,
+    errors: 0,
+    timeouts: 0,
+    latencies: [],
+    startTime: Date.now(),
+    endTime: 0,
+  }
+
   let index = 0
+
+  function getDelayMs(): number {
+    if (cfg.loadPattern === 'steady') return 0
+    if (cfg.loadPattern === 'burst') {
+      // Short pause between bursts
+      const burstSize = Math.max(10, Math.floor(requests.length / 10))
+      if (index > 0 && index % burstSize === 0) return randInt(200, 800)
+      return 0
+    }
+    if (cfg.loadPattern === 'spike') {
+      // Periodic high-delay followed by zero-delay windows
+      const cycle = 50
+      const pos = index % cycle
+      if (pos < 10) return randInt(0, 5) // spike window: minimal delay
+      if (pos < 20) return randInt(100, 300) // ramp down
+      return randInt(300, 1000) // normal load
+    }
+    return 0
+  }
 
   async function worker() {
     while (index < requests.length) {
       const req = requests[index++]
       const apiKey = keyMap.get(req.keyId)!
+      const delay = getDelayMs()
+      if (delay > 0) await new Promise((r) => setTimeout(r, delay))
 
+      const reqStart = Date.now()
       try {
-        await fetch(`http://127.0.0.1:${tfPort}/v1/chat/completions`, {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 5000)
+        const res = await fetch(`http://127.0.0.1:${tfPort}/v1/chat/completions`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -484,23 +620,40 @@ async function executeHttpRequests(
             stream: req.stream,
             session_id: req.sessionId,
           }),
+          signal: controller.signal,
         })
-      } catch (err) {
-        // Ignore errors for simulation robustness
+        clearTimeout(timeoutId)
+        const latency = Date.now() - reqStart
+        metrics.latencies.push(latency)
+        if (res.ok) {
+          metrics.success++
+        } else {
+          metrics.errors++
+        }
+      } catch (err: any) {
+        if (err.name === 'AbortError') {
+          metrics.timeouts++
+        } else {
+          metrics.errors++
+        }
       }
 
       if (index % 50 === 0) {
-        process.stdout.write(`\r  Progress: ${index}/${requests.length}`)
+        const elapsed = ((Date.now() - metrics.startTime) / 1000).toFixed(1)
+        const rps = (index / Math.max(1, parseFloat(elapsed))).toFixed(1)
+        process.stdout.write(`\r  Progress: ${index}/${requests.length}  ${elapsed}s  ${rps} req/s`)
       }
     }
   }
 
   const workers: Promise<void>[] = []
-  for (let i = 0; i < concurrency; i++) {
+  for (let i = 0; i < cfg.concurrency; i++) {
     workers.push(worker())
   }
   await Promise.all(workers)
+  metrics.endTime = Date.now()
   process.stdout.write(`\r  Progress: ${requests.length}/${requests.length}\n`)
+  return metrics
 }
 
 // ── Fast Mode: Direct DB Insert ──
@@ -683,7 +836,13 @@ function rebuildStatsAggregates(db: Database.Database) {
 
 // ── Summary ──
 
-function printSummary(db: Database.Database, cfg: SimConfig, durationMs: number) {
+function percentile(sorted: number[], p: number): number {
+  if (sorted.length === 0) return 0
+  const idx = Math.ceil((p / 100) * sorted.length) - 1
+  return sorted[Math.max(0, idx)]
+}
+
+function printSummary(db: Database.Database, cfg: SimConfig, durationMs: number, metrics?: RequestMetrics) {
   const totalRequests = (db.prepare('SELECT COUNT(*) as c FROM request_logs').get() as any).c
   const totalSessions = (db.prepare('SELECT COUNT(*) as c FROM sessions').get() as any).c
   const totalKeys = (db.prepare('SELECT COUNT(*) as c FROM api_keys').get() as any).c
@@ -703,6 +862,14 @@ function printSummary(db: Database.Database, cfg: SimConfig, durationMs: number)
     )
     .all() as any[]
 
+  const providerStats = db
+    .prepare(
+      `SELECT k.provider, COUNT(*) as req_count, SUM(r.total_tokens) as tokens
+       FROM request_logs r JOIN api_keys k ON r.api_key_id = k.id
+       GROUP BY k.provider ORDER BY req_count DESC`
+    )
+    .all() as any[]
+
   const hourWindows = (db.prepare('SELECT COUNT(DISTINCT window_start) as c FROM stats_aggregates WHERE window_type = ?').get('hour') as any).c
   const dayWindows = (db.prepare('SELECT COUNT(DISTINCT window_start) as c FROM stats_aggregates WHERE window_type = ?').get('day') as any).c
 
@@ -718,6 +885,24 @@ function printSummary(db: Database.Database, cfg: SimConfig, durationMs: number)
   console.log(`  Hour Windows:    ${hourWindows}`)
   console.log(`  Day Windows:     ${dayWindows}`)
 
+  if (metrics && !cfg.fast) {
+    const rps = (metrics.total / (durationMs / 1000)).toFixed(1)
+    const sorted = [...metrics.latencies].sort((a, b) => a - b)
+    const avg = sorted.length > 0 ? (sorted.reduce((a, b) => a + b, 0) / sorted.length).toFixed(0) : '0'
+    const p50 = percentile(sorted, 50)
+    const p95 = percentile(sorted, 95)
+    const p99 = percentile(sorted, 99)
+    const successRate = ((metrics.success / metrics.total) * 100).toFixed(1)
+
+    console.log('\n  Performance:')
+    console.log(`    Throughput:      ${rps} req/s`)
+    console.log(`    Success rate:    ${successRate}%  (${metrics.success} ok / ${metrics.errors} err / ${metrics.timeouts} timeout)`)
+    console.log(`    Latency avg:     ${avg}ms`)
+    console.log(`    Latency p50:     ${p50}ms`)
+    console.log(`    Latency p95:     ${p95}ms`)
+    console.log(`    Latency p99:     ${p99}ms`)
+  }
+
   console.log('\n  Patterns:')
   for (const row of patternStats) {
     const name = row.pattern ?? 'none'
@@ -730,6 +915,11 @@ function printSummary(db: Database.Database, cfg: SimConfig, durationMs: number)
     console.log(`    ${row.name.padEnd(25)} ${String(row.req_count).padStart(4)} req  ${String(row.tokens).padStart(6)} tokens`)
   }
 
+  console.log('\n  By Provider:')
+  for (const row of providerStats) {
+    console.log(`    ${row.provider.padEnd(25)} ${String(row.req_count).padStart(4)} req  ${String(row.tokens).padStart(6)} tokens`)
+  }
+
   console.log('\n✅ Data ready. Open the dashboard to view results.')
 }
 
@@ -738,23 +928,32 @@ function printSummary(db: Database.Database, cfg: SimConfig, durationMs: number)
 async function main() {
   const cfg = parseArgs()
   rng = makeRng(cfg.seed)
+  const availableProviders = getAvailableProviders()
 
   console.log('🚀 Token Flow Studio Simulation')
   console.log('================================')
-  console.log(`  Requests:     ${cfg.totalRequests}`)
-  console.log(`  Keys:         ${cfg.keyCount}`)
-  console.log(`  Providers:    ${cfg.providerCount}`)
-  console.log(`  Concurrency:  ${cfg.concurrency}`)
-  console.log(`  Stream ratio: ${cfg.streamRatio}`)
-  console.log(`  Days:         ${cfg.days}`)
-  console.log(`  Mode:         ${cfg.fast ? 'Fast (DB direct)' : 'HTTP (proxy)'}`)
-  console.log(`  Seed:         ${cfg.seed}`)
+  console.log(`  Requests:      ${cfg.totalRequests}`)
+  console.log(`  Keys:          ${cfg.keyCount}`)
+  console.log(`  Providers:     ${cfg.providerCount} / ${ALL_PROVIDER_TEMPLATES.length} configured (${availableProviders.length} available)`)
+  console.log(`  Concurrency:   ${cfg.concurrency}`)
+  console.log(`  Stream ratio:  ${cfg.streamRatio}`)
+  console.log(`  Days:          ${cfg.days}`)
+  console.log(`  Mode:          ${cfg.fast ? 'Fast (DB direct)' : 'HTTP (proxy)'}`)
+  console.log(`  Load pattern:  ${cfg.loadPattern}`)
+  console.log(`  Error rate:    ${(cfg.errorRate * 100).toFixed(1)}%`)
+  console.log(`  Seed:          ${cfg.seed}`)
   console.log('')
+  if (cfg.providerCount > 0) {
+    const names = availableProviders.slice(0, cfg.providerCount).map((p) => p.template).join(', ')
+    console.log(`  Templates:     ${names}`)
+    console.log('')
+  }
 
   // 1. Start mock upstream
   console.log('1. Starting mock upstream...')
-  const mock = await startSmartMockUpstream()
+  const mock = await startSmartMockUpstream(cfg.errorRate)
   console.log(`   Mock upstream: ${mock.url}`)
+  if (cfg.errorRate > 0) console.log(`   Error injection: ${(cfg.errorRate * 100).toFixed(1)}%`)
 
   // 2. Setup temp config
   console.log('2. Setting up temporary config...')
@@ -762,7 +961,8 @@ async function main() {
   mkdirSync(tempDir, { recursive: true })
 
   const configPath = join(tempDir, 'config.json5')
-  const providers = PROVIDER_TEMPLATES.slice(0, cfg.providerCount).map((p) => ({
+  const simProviders = getAvailableProviders().slice(0, cfg.providerCount)
+  const providers = simProviders.map((p) => ({
     name: p.name,
     template: p.template,
     api_base_url: mock.url,
@@ -817,10 +1017,20 @@ async function main() {
   console.log(`6. Executing ${requests.length} requests...`)
   const startTime = Date.now()
 
+  let metrics: RequestMetrics = {
+    total: requests.length,
+    success: requests.length,
+    errors: 0,
+    timeouts: 0,
+    latencies: [],
+    startTime,
+    endTime: Date.now(),
+  }
+
   if (cfg.fast) {
     executeFastInsert(requests, keyMap, db)
   } else {
-    await executeHttpRequests(requests, tfPort, keyMap, cfg.concurrency)
+    metrics = await executeHttpRequests(requests, tfPort, keyMap, cfg)
     // After HTTP execution, fix timestamps and re-insert with correct data
     // so that Dashboard time distribution matches the simulation.
     // The proxy pipeline was already exercised during the HTTP calls.
@@ -838,7 +1048,7 @@ async function main() {
   const duration = Date.now() - startTime
 
   // 9. Print summary
-  printSummary(db, cfg, duration)
+  printSummary(db, cfg, duration, metrics)
 
   // 10. Cleanup or keep
   if (cfg.keep) {
