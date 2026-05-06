@@ -2,7 +2,7 @@
 
 **日期**: 2026-05-06
 **分支**: `feat/typescript`
-**提交**: `a4bba46` feat: analysis dashboard overhaul with pre-aggregated stats
+**提交**: `0bf4f7b` feat: add studio-sim script for multi-project data simulation
 **状态**: 核心功能全部就位，进入增强阶段
 
 ---
@@ -66,6 +66,9 @@
 - [x] Mock upstream HTTP server 工具
 - [x] OpenAI / Anthropic pipeline 集成测试
 - [x] 真实 Provider 端到端验证 (OpenRouter + Kimi)
+- [x] Layer 3 studio-sim：多项目/多 Session 高强度模拟脚本 (`tests/simulation/studio-sim.ts`)
+  - Fast 模式（直写 DB）+ HTTP 模式（完整 proxy 链路）
+  - 4 个 Provider / 6 个 Key / 18 个 Session，按工作模式分布时间
 
 ### Provider/Key 架构重构
 - [x] Provider = 完整上游配置 (name, template, base_url, api_key, models, options)

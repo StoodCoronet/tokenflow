@@ -2,14 +2,17 @@
 
 > 详细计划见 `devdocs/2026-04-20-phase9-test-plan.md`
 
-## 当前进度 (2026-04-20)
+## 当前进度 (2026-05-06)
 
 - ✅ 基础设施：环境变量 + vitest 配置 + smoke test
 - ✅ API 文档收集完成（详见下方）
-- ⬜ Fixture 数据构造
-- ⬜ 单元测试（3 文件）
-- ⬜ 集成测试（2 文件）
-- ⬜ Layer 3 studio-sim（延后）
+- ✅ Fixture 数据构造
+- ✅ 单元测试（3 文件）
+- ✅ 集成测试（2 文件）
+- ✅ Layer 3 studio-sim（多项目模拟脚本）
+- ✅ 9 个 provider transformer 单元测试
+- ✅ 真实 Provider 端到端验证 (OpenRouter + Kimi)
+- ✅ Analysis Dashboard + 预聚合 stats
 
 ## API 参考文档
 
