@@ -26,7 +26,16 @@ tflow --tldr             # Quick reference
 
 ```bash
 pnpm install
-pnpm dev                 # Server + UI with hot reload
+pnpm build               # Build workspace packages first (e.g. @tokenflow/shared)
+pnpm dev                 # Server + UI + Docs with hot reload
+```
+
+Or start services separately:
+
+```bash
+pnpm dev:server          # localhost:40001
+pnpm dev:ui              # localhost:40002
+pnpm dev:docs            # localhost:40003
 ```
 
 ## Architecture
