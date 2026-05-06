@@ -2,7 +2,7 @@
 
 **日期**: 2026-05-06
 **分支**: `feat/typescript`
-**提交**: `0bf4f7b` feat: add studio-sim script for multi-project data simulation
+**提交**: `1de649f` docs: update plan and project status for Layer 3 studio-sim
 **状态**: 核心功能全部就位，进入增强阶段
 
 ---
@@ -20,6 +20,35 @@
 **Config**: `~/.tokenflow/config.json5`
 **测试**: `pnpm test` (90 个用例全部通过)
 **Build**: `pnpm build` (server + ui + docs)
+**数据模拟**: `npx tsx tests/simulation/studio-sim.ts`
+
+---
+
+## 文档索引
+
+| 文档 | 日期 | 状态 | 说明 |
+|------|------|------|------|
+| [project-status](2026-05-06-project-status.md) | 2026-05-06 | **最新** | 本文件，项目全景快照 |
+| [analysis-dashboard-spec](2026-05-06-analysis-dashboard-spec.md) | 2026-05-06 | **最新** | Analysis Dashboard 改造设计决策 |
+| [provider-transformers-port-spec](2026-04-26-provider-transformers-port-spec.md) | 2026-04-26 | **最新** | 11 个 Provider Transformer 移植方案 |
+| [provider-transformers-test-plan](2026-04-26-provider-transformers-test-plan.md) | 2026-04-26 | **最新** | Provider Transformer 单元测试方案 |
+| [test-plan-comparison](2026-04-26-test-plan-comparison.md) | 2026-04-26 | **参考** | Phase 9 旧版 vs 新版测试方案对比 |
+| [phase9-test-plan](2026-04-20-phase9-test-plan.md) | 2026-04-20 | **最新** | Phase 9 测试体系（Mock 优先） |
+| [phase8.5-transformer-audit-spec](2026-04-20-phase8.5-transformer-audit-spec.md) | 2026-04-20 | **参考** | Phase 8.5 Transformer 审计与重构 |
+| [plan](2026-04-19-plan.md) | 2026-04-19 | **过时** | 早期实现计划，被 project-status 取代 |
+| [phase9-test-plan](2026-04-19-phase9-test-plan.md) | 2026-04-19 | **过时** | 被 2026-04-20 版取代 |
+| [ccr-research](2026-04-19-ccr-research.md) | 2026-04-19 | **参考** | CCR Transformer 架构调研 |
+| [sessions-page-spec](2026-04-18-sessions-page-spec.md) | 2026-04-18 | **过时** | Sessions 页面早期设计 |
+| [plan](2026-04-18-plan.md) | 2026-04-18 | **过时** | 早期实现计划 |
+| [feature-comparison](2026-04-17-feature-comparison.md) | 2026-04-17 | **参考** | CCR vs Token Flow 功能对比 |
+| [typescript-rewrite-plan](2026-04-16-typescript-rewrite-plan.md) | 2026-04-16 | **参考** | TypeScript 重写计划 |
+| [cli-redesign](2026-04-16-cli-redesign.md) | 2026-04-16 | **过时** | CLI 重设计早期笔记 |
+| [cli-redesign](2026-04-15-cli-redesign.md) | 2026-04-15 | **过时** | CLI 重设计早期笔记 |
+| [spec](2026-03-26-spec.md) | 2026-03-26 | **参考** | 产品规格、架构、数据模型 |
+| [deploy](2026-03-26-deploy.md) | 2026-03-26 | **过时** | Python 版本部署指南（legacy） |
+| [readme](2026-03-26-readme.md) | 2026-03-26 | **过时** | 早期 README |
+
+> **API 参考文档** 位于 `devdocs/api-docs/`，包含 OpenAI、Anthropic 官方文档及精简版参考。
 
 ---
 
@@ -27,48 +56,53 @@
 
 ### Phase 1-6 基础架构
 - [x] 前后端对接验证
-- [x] Anthropic Console 风格 UI 改造
-- [x] Sessions 重设计 + Keys CRUD
-- [x] Settings 页面
-- [x] Documentation 独立包 (`packages/docs/`)
+- [x] Anthropic Console 风格 UI 改造（亮/暗主题、暖灰色调）
+- [x] Sessions 重设计 + Keys CRUD（创建/更新/删除）
+- [x] Settings 页面（Provider/Detector/Proxy 配置）
+- [x] Documentation 独立包 (`packages/docs/`，端口 40003)
+- [x] 前后端共享包 (`packages/shared/`)
 
 ### Phase 7 CCR 调研
-- [x] CCR 源码调研与提炼
-- [x] Transformer 4 向接口设计
+- [x] CCR 源码调研与提炼（Transformer 4 向接口、生命周期、Pipeline）
+- [x] Transformer 两层架构设计决策（Main + Provider）
 
 ### Phase 8 TUI
 - [x] 全屏 TUI (ink)
 - [x] 键盘导航（← → ESC）
 - [x] Providers / Ports / Router / Detectors / General 页面
+- [x] CLI 重设计（基于 CCR 调研）
 
 ### Phase 8.5 Transformer 两层架构
-- [x] MainTransformer (按 endpoint URL) + ProviderTransformer (按 provider template)
+- [x] MainTransformer（按 endpoint URL）+ ProviderTransformer（按 provider template）
+- [x] `/v1/chat/completions` + `/v1/messages` + `/v1/responses` 多端点支持
 - [x] 11 个 provider transformer 全部就位
-- [x] `/v1/chat/completions` + `/v1/messages` 双端点支持
 
-| Template | 文件 | 状态 |
-|----------|------|------|
-| `openai` | `transformers/openai.ts` | ✅ |
-| `anthropic` | `transformers/anthropic.ts` | ✅ (stream 为 pass-through，见待办) |
-| `openai-responses` | `transformers/openai-responses.ts` | ✅ |
-| `gemini` | `transformers/gemini.ts` | ✅ |
-| `deepseek` | `transformers/deepseek.ts` | ✅ |
-| `openrouter` | `transformers/openrouter.ts` | ✅ |
-| `groq` | `transformers/groq.ts` | ✅ |
-| `cerebras` | `transformers/cerebras.ts` | ✅ |
-| `vercel` | `transformers/vercel.ts` | ✅ |
-| `vertex-gemini` | `transformers/vertex.ts` | ✅ |
-| `vertex-claude` | `transformers/vertex.ts` | ✅ |
+| # | Template | 文件 | 状态 | 说明 |
+|---|----------|------|------|------|
+| 1 | `openai` | `transformers/openai.ts` | ✅ | 基准，直接转发 |
+| 2 | `anthropic` | `transformers/anthropic.ts` | ✅* | sync 完整，stream 为 pass-through |
+| 3 | `openai-responses` | `transformers/openai-responses.ts` | ✅ | OpenAI Responses API |
+| 4 | `gemini` | `transformers/gemini.ts` | ✅ | Google Gemini 原生 API |
+| 5 | `deepseek` | `transformers/deepseek.ts` | ✅ | reasoning_content 特殊处理 |
+| 6 | `openrouter` | `transformers/openrouter.ts` | ✅ | cache_control + image 归一化 |
+| 7 | `groq` | `transformers/groq.ts` | ✅ | $schema 剥离 + tool_call ID |
+| 8 | `cerebras` | `transformers/cerebras.ts` | ✅ | reasoning 字段处理 |
+| 9 | `vercel` | `transformers/vercel.ts` | ✅ | cache_control + image 归一化 |
+| 10 | `vertex-gemini` | `transformers/vertex.ts` | ✅ | GCP OAuth + Gemini |
+| 11 | `vertex-claude` | `transformers/vertex.ts` | ✅ | GCP OAuth + Claude |
 
 ### Phase 9 测试体系
 - [x] Vitest 配置 (`pool: 'forks'`, `fileParallelism: false`)
 - [x] 90 个测试用例全部通过 (14 个测试文件)
+- [x] 单元测试：OpenAI Main / Anthropic Main / OpenAI Provider / 9 个 Provider Transformer
+- [x] 集成测试：OpenAI / Anthropic pipeline 端到端
 - [x] Mock upstream HTTP server 工具
-- [x] OpenAI / Anthropic pipeline 集成测试
 - [x] 真实 Provider 端到端验证 (OpenRouter + Kimi)
-- [x] Layer 3 studio-sim：多项目/多 Session 高强度模拟脚本 (`tests/simulation/studio-sim.ts`)
+- [x] Layer 3 studio-sim：多项目/多 Session 高强度模拟脚本
+  - `tests/simulation/studio-sim.ts`
   - Fast 模式（直写 DB）+ HTTP 模式（完整 proxy 链路）
   - 4 个 Provider / 6 个 Key / 18 个 Session，按工作模式分布时间
+  - 用于 Dashboard 数据填充和并发压力验证
 
 ### Provider/Key 架构重构
 - [x] Provider = 完整上游配置 (name, template, base_url, api_key, models, options)
@@ -84,6 +118,7 @@
 - [x] Model tag input + search dropdown + 刷新按钮
 - [x] SQLite `provider_models` 缓存表
 - [x] 全局 `PROXY_URL` 配置 (undici ProxyAgent)
+- [x] `.env` 加载（E2E 测试从 `.env` 读取 API Key）
 
 ### Analysis Dashboard 改造 (2026-05-06)
 - [x] Overall 看板：概览卡片 + 趋势图 + Key/Model/效率分布
@@ -107,7 +142,8 @@
 ### 高优先级
 | 项目 | 说明 | 代码位置 |
 |------|------|----------|
-| **Anthropic streaming 转换** | `transformResponseOut` 对 stream 是 pass-through。当客户端走 `/v1/chat/completions` + `template=anthropic` 时，Anthropic SSE 不会被转成 OpenAI chat.completion chunk 格式。`/v1/messages` 不受影响。 | `packages/server/src/transformers/anthropic.ts:514` |
+| **启动时调用 `cleanupOldStats()`** | 90 天旧数据自动清理函数已写但未在 server 启动时调用，需一行代码修复 | `packages/server/src/index.ts` |
+| **Anthropic streaming 转换** | `/v1/chat/completions` + `template=anthropic` 时，Anthropic SSE 未被转成 OpenAI chat.completion.chunk 格式（pass-through） | `packages/server/src/transformers/anthropic.ts:514` |
 
 ### 中/低优先级
 | 项目 | 说明 |
@@ -124,10 +160,11 @@
 
 ## 已知风险与注意事项
 
-1. **Anthropic streaming**: 如上所述，特定场景下 stream 格式可能不对。
+1. **Anthropic streaming**: 特定场景下 stream 格式可能不对（见高优先级待办）。
 2. **undici 版本**: 必须使用 undici@6，undici@8 在 Node 20 下会报错 (`webidl.util.markAsUncloneable is not a function`)。
 3. **Vertex 依赖**: `google-auth-library` 仅在 Vertex 系列 provider 中使用，需要配置 GCP 认证。
-4. **stats_aggregates 清理**: 保留 90 天数据，server 启动时自动清理旧数据（已实现在 `cleanupOldStats()`，但启动时未调用——见下一步建议）。
+4. **stats_aggregates 清理**: 保留 90 天数据，server 启动时未调用 `cleanupOldStats()`（见高优先级待办）。
+5. **pnpm build 前置**: `pnpm dev` 前需先 `pnpm build`，否则 `@tokenflow/shared` 的 `dist/` 缺失会导致 module not found。
 
 ---
 
@@ -140,14 +177,31 @@ git checkout feat/typescript
 # 2. 安装依赖
 pnpm install
 
-# 3. 启动开发环境（三个终端）
+# 3. 构建 workspace 包
+pnpm build
+
+# 4. 启动开发环境（三个终端）
 pnpm dev:server   # localhost:40001
 pnpm dev:ui       # localhost:40002
 pnpm dev:docs     # localhost:40003
 
-# 4. 验证
+# 5. 验证
 pnpm test         # 90 passed
 pnpm build        # server + ui + docs
+```
+
+### 生成模拟数据用于 Dashboard 调试
+
+```bash
+# 快速模式（直写 DB，1000 请求，7 天跨度）
+npx tsx tests/simulation/studio-sim.ts --fast --requests 1000 --days 7
+
+# 高并发压力测试（走完整 proxy 链路）
+npx tsx tests/simulation/studio-sim.ts --requests 2000 --concurrency 50
+
+# 生成数据后保持 server 运行，配合 UI 查看
+npx tsx tests/simulation/studio-sim.ts --keep --fast --requests 500 --days 3
+# 另开终端: pnpm dev:ui
 ```
 
 ---
@@ -156,5 +210,6 @@ pnpm build        # server + ui + docs
 
 1. **启动时调用 `cleanupOldStats()`** — `packages/server/src/index.ts` 中 `getDb()` 后加一行 `cleanupOldStats()`，确保 90 天旧数据自动清理。
 2. **Anthropic streaming 转换** — 如需覆盖 `/v1/chat/completions` + anthropic provider 的 stream 场景，需实现 SSE 格式转换（Anthropic SSE → OpenAI chat.completion.chunk）。
-3. **Phase 11 高级检测器** — 如需更多智能分析能力，规划 DET-004~008。
-4. **成本估算** — 配置模型单价表，在 Analysis Dashboard 展示预估费用。
+3. **成本估算** — 配置模型单价表，在 Analysis Dashboard 展示预估费用。
+4. **Phase 11 高级检测器** — 如需更多智能分析能力，规划 DET-004~008。
+5. **国内平台转换器** — DashScope、MiniMax、智谱 GLM、月之暗面 Kimi 等国内平台支持。
