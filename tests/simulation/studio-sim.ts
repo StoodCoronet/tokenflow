@@ -22,6 +22,9 @@
  *   --port <n>         Token Flow server 端口 (默认: 随机)
  *   --load-pattern <p> 负载模式: steady | burst | spike (默认: steady)
  *   --error-rate <r>   错误注入比例 0-1 (默认: 0)
+ *   --live             实时模拟模式：持续运行模拟真实团队 API 使用
+ *   --duration <m>     实时模式运行时长（分钟），0 表示无限运行 (默认: 0)
+ *   --users <n>        实时模式模拟用户数 (默认: 10)
  *
  * Examples:
  *   # 默认：500 请求，最近 24 小时，6 个 key，全部可用 provider
@@ -35,6 +38,12 @@
  *
  *   # 突发负载 + 5% 错误注入
  *   npx tsx tests/simulation/studio-sim.ts --requests 2000 --load-pattern burst --error-rate 0.05
+ *
+ *   # 实时模拟：10 人团队正常 API 使用，持续 30 分钟
+ *   npx tsx tests/simulation/studio-sim.ts --live --duration 30 --users 10
+ *
+ *   # 实时模拟 + 保持 server 运行（配合 UI 查看 Dashboard）
+ *   npx tsx tests/simulation/studio-sim.ts --live --duration 60 --users 10 --keep
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
@@ -63,6 +72,9 @@ interface SimConfig {
   port: number
   loadPattern: 'steady' | 'burst' | 'spike'
   errorRate: number
+  live: boolean
+  duration: number
+  users: number
 }
 
 interface SimProvider {
@@ -129,6 +141,9 @@ function parseArgs(): SimConfig {
     port: parseInt(get('--port', '0'), 10),
     loadPattern: ['steady', 'burst', 'spike'].includes(loadPattern) ? loadPattern : 'steady',
     errorRate: Math.max(0, Math.min(1, parseFloat(get('--error-rate', '0')))),
+    live: has('--live'),
+    duration: parseInt(get('--duration', '0'), 10),
+    users: parseInt(get('--users', '10'), 10),
   }
 }
 
@@ -885,7 +900,7 @@ function printSummary(db: Database.Database, cfg: SimConfig, durationMs: number,
   console.log(`  Hour Windows:    ${hourWindows}`)
   console.log(`  Day Windows:     ${dayWindows}`)
 
-  if (metrics && !cfg.fast) {
+  if (metrics && !cfg.fast && metrics.total > 0) {
     const rps = (metrics.total / (durationMs / 1000)).toFixed(1)
     const sorted = [...metrics.latencies].sort((a, b) => a - b)
     const avg = sorted.length > 0 ? (sorted.reduce((a, b) => a + b, 0) / sorted.length).toFixed(0) : '0'
@@ -923,6 +938,308 @@ function printSummary(db: Database.Database, cfg: SimConfig, durationMs: number,
   console.log('\n✅ Data ready. Open the dashboard to view results.')
 }
 
+// ── Live Simulation Personas ──
+
+type UserPersona = 'coding' | 'chat' | 'deepresearch'
+
+interface PersonaConfig {
+  name: string
+  delayMin: number
+  delayMax: number
+  streamRatio: number
+  pattern: 'full_context' | 'sliding_window' | 'summarization'
+  queries: string[]
+  systemPrompts: string[]
+  completionTokenMin: number
+  completionTokenMax: number
+}
+
+const PERSONAS: Record<UserPersona, PersonaConfig> = {
+  coding: {
+    name: 'Coder',
+    delayMin: 3000,
+    delayMax: 15000,
+    streamRatio: 0.8,
+    pattern: 'sliding_window',
+    queries: [
+      'Refactor this function to use async/await',
+      'Write a unit test for this edge case',
+      'Explain why this recursive call overflows',
+      'Convert this Python snippet to TypeScript',
+      'Debug this null pointer exception',
+      'Implement a retry mechanism with exponential backoff',
+      'Review this PR for memory leaks',
+      'Generate types for this JSON schema',
+      'Optimize this SQL query',
+      'Set up CI/CD pipeline for this repo',
+      'Write a Dockerfile for this service',
+      'Explain this regex pattern',
+    ],
+    systemPrompts: [
+      'You are a senior software engineer. Be concise, provide code examples.',
+      'You are a code reviewer. Focus on performance and security.',
+      'You are a DevOps expert. Provide infrastructure-as-code examples.',
+    ],
+    completionTokenMin: 100,
+    completionTokenMax: 800,
+  },
+  chat: {
+    name: 'ChatUser',
+    delayMin: 10000,
+    delayMax: 30000,
+    streamRatio: 0.3,
+    pattern: 'sliding_window',
+    queries: [
+      'Translate this to Chinese',
+      'Summarize the meeting notes',
+      'What are the key takeaways',
+      'Help me draft an email',
+      'Explain this concept simply',
+      'Suggest a title for this article',
+      'What is the weather like today',
+      'Recommend a restaurant nearby',
+      'Help me plan a trip itinerary',
+      'Write a birthday message',
+      'What should I cook for dinner',
+      'Explain the difference between X and Y',
+    ],
+    systemPrompts: [
+      'You are a helpful assistant.',
+      'You are a friendly conversationalist.',
+    ],
+    completionTokenMin: 20,
+    completionTokenMax: 200,
+  },
+  deepresearch: {
+    name: 'Researcher',
+    delayMin: 30000,
+    delayMax: 120000,
+    streamRatio: 0.5,
+    pattern: 'full_context',
+    queries: [
+      'Analyze the competitive landscape of AI infrastructure startups',
+      'Literature review on transformer architecture improvements since 2023',
+      'Compare Kubernetes vs Nomad for edge deployments',
+      'Deep dive into RAG pipeline optimization techniques',
+      'Market sizing for LLM observability tools',
+      'Evaluate trade-offs between microservices and monoliths',
+      'Research the latest developments in multimodal models',
+      'Analyze token pricing trends across major providers',
+      'Survey of prompt injection mitigation strategies',
+      'Compare vector databases: Pinecone, Weaviate, Milvus',
+      'Regulatory landscape for AI in financial services',
+      'Technical analysis of different consensus algorithms',
+    ],
+    systemPrompts: [
+      'You are a research analyst. Provide structured, in-depth analysis with sources.',
+      'You are a technical writer. Produce comprehensive reports with examples.',
+      'You are a strategy consultant. Frame answers with pros/cons and recommendations.',
+    ],
+    completionTokenMin: 300,
+    completionTokenMax: 1200,
+  },
+}
+
+// ── Live Simulation ──
+
+interface LiveStats {
+  requests: number
+  success: number
+  errors: number
+  timeouts: number
+  startTime: number
+}
+
+async function runLiveSimulation(
+  keys: SimKey[],
+  providers: SimProvider[],
+  tfPort: number,
+  keyMap: Map<string, string>,
+  cfg: SimConfig,
+  db: Database.Database,
+  mock: MockUpstream
+) {
+  const stats: LiveStats = { requests: 0, success: 0, errors: 0, timeouts: 0, startTime: Date.now() }
+  const running = { value: true }
+  const userCount = Math.min(cfg.users, keys.length)
+
+  // Graceful shutdown
+  const shutdown = () => {
+    console.log('\n🛑 Shutting down live simulation...')
+    running.value = false
+  }
+  process.on('SIGINT', shutdown)
+  process.on('SIGTERM', shutdown)
+
+  // Assign persona to each user
+  const personaTypes: UserPersona[] = ['coding', 'chat', 'deepresearch']
+  const userPersonas = new Map<number, PersonaConfig>()
+  const userSessions = new Map<number, string>()
+  const userMessageHistory = new Map<number, Array<{ role: string; content: string }>>()
+
+  for (let i = 0; i < userCount; i++) {
+    const personaType = personaTypes[i % personaTypes.length]
+    userPersonas.set(i, PERSONAS[personaType])
+    userSessions.set(i, `live-sess-${generateId().slice(0, 8)}`)
+    userMessageHistory.set(i, [])
+  }
+
+  // Stats printer
+  const statsInterval = setInterval(() => {
+    if (!running.value) return
+    const elapsed = (Date.now() - stats.startTime) / 1000
+    const rpm = elapsed > 0 ? ((stats.requests / elapsed) * 60).toFixed(1) : '0'
+    const activeUsers = userCount
+
+    // Per-persona stats
+    const personaCounts = new Map<string, number>()
+    for (let i = 0; i < userCount; i++) {
+      const p = userPersonas.get(i)!.name
+      personaCounts.set(p, (personaCounts.get(p) || 0) + 1)
+    }
+    const personaStr = Array.from(personaCounts.entries())
+      .map(([name, count]) => `${name}:${count}`)
+      .join(' ')
+
+    console.log(
+      `  [${new Date().toLocaleTimeString()}]  ${stats.requests} req  ${rpm} req/min  success:${stats.success}  err:${stats.errors}  timeout:${stats.timeouts}  ${personaStr}`
+    )
+  }, 10000)
+
+  // Duration limit
+  if (cfg.duration > 0) {
+    setTimeout(() => {
+      console.log(`\n⏰ Duration limit (${cfg.duration} min) reached.`)
+      running.value = false
+    }, cfg.duration * 60 * 1000)
+  }
+
+  async function userLoop(userIndex: number) {
+    const key = keys[userIndex % keys.length]
+    const apiKey = keyMap.get(key.id)!
+    const sessionId = userSessions.get(userIndex)!
+    const provider = providers.find((p) => p.name === key.provider)!
+    const persona = userPersonas.get(userIndex)!
+    const history = userMessageHistory.get(userIndex)!
+
+    while (running.value) {
+      const delayMs = randInt(persona.delayMin, persona.delayMax)
+      await new Promise((r) => setTimeout(r, delayMs))
+      if (!running.value) break
+
+      // Build messages with accumulated history
+      const messages: Array<{ role: string; content: string }> = []
+
+      // Add system prompt on first turn or randomly
+      if (history.length === 0 || randBool(0.1)) {
+        messages.push({ role: 'system', content: randPick(persona.systemPrompts) })
+      }
+
+      // Include recent history (sliding window for coding/chat, full for research)
+      const maxHistory = persona.pattern === 'full_context' ? 30 : 8
+      const recentHistory = history.slice(-maxHistory)
+      messages.push(...recentHistory)
+
+      // Add new user query
+      const query = randPick(persona.queries)
+      messages.push({ role: 'user', content: query })
+
+      const model = randPick(provider.models)
+      const stream = randBool(persona.streamRatio)
+
+      const reqStart = Date.now()
+      let responseContent = ''
+      try {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 5000)
+        const res = await fetch(`http://127.0.0.1:${tfPort}/v1/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': apiKey,
+          },
+          body: JSON.stringify({
+            model,
+            messages,
+            stream,
+            session_id: sessionId,
+          }),
+          signal: controller.signal,
+        })
+        clearTimeout(timeoutId)
+        stats.requests++
+        if (res.ok) {
+          stats.success++
+          // Try to extract response content for history accumulation (non-streaming only)
+          if (!stream) {
+            try {
+              const body = await res.json() as any
+              responseContent = body.choices?.[0]?.message?.content || generateResponseContent()
+            } catch {
+              responseContent = generateResponseContent()
+            }
+          } else {
+            responseContent = generateResponseContent()
+          }
+        } else {
+          stats.errors++
+          responseContent = generateResponseContent()
+        }
+      } catch (err: any) {
+        stats.requests++
+        if (err.name === 'AbortError') {
+          stats.timeouts++
+        } else {
+          stats.errors++
+        }
+        responseContent = generateResponseContent()
+      }
+
+      // Accumulate conversation history
+      history.push({ role: 'user', content: query })
+      history.push({ role: 'assistant', content: responseContent })
+
+      // Trim history to prevent unbounded growth
+      if (history.length > maxHistory * 2) {
+        const trimmed = history.slice(-maxHistory * 2)
+        history.length = 0
+        history.push(...trimmed)
+      }
+    }
+  }
+
+  const personaDistribution = new Map<string, number>()
+  for (let i = 0; i < userCount; i++) {
+    const p = userPersonas.get(i)!.name
+    personaDistribution.set(p, (personaDistribution.get(p) || 0) + 1)
+  }
+  const personaStr = Array.from(personaDistribution.entries())
+    .map(([name, count]) => `${name}=${count}`)
+    .join(', ')
+
+  console.log(`\n▶️  Live simulation started: ${userCount} users (${personaStr}), Ctrl+C to stop`)
+  if (cfg.duration > 0) {
+    console.log(`   Duration: ${cfg.duration} minute(s)`)
+  } else {
+    console.log(`   Duration: unlimited`)
+  }
+
+  const loops: Promise<void>[] = []
+  for (let i = 0; i < userCount; i++) {
+    loops.push(userLoop(i))
+  }
+
+  await Promise.all(loops)
+  clearInterval(statsInterval)
+
+  // Rebuild aggregates after live simulation
+  console.log('   Rebuilding stats aggregates...')
+  rebuildStatsAggregates(db)
+
+  const totalDuration = Date.now() - stats.startTime
+  console.log(`\n✅ Live simulation ended. ${stats.requests} requests in ${(totalDuration / 1000).toFixed(1)}s`)
+}
+
 // ── Main ──
 
 async function main() {
@@ -941,6 +1258,11 @@ async function main() {
   console.log(`  Mode:          ${cfg.fast ? 'Fast (DB direct)' : 'HTTP (proxy)'}`)
   console.log(`  Load pattern:  ${cfg.loadPattern}`)
   console.log(`  Error rate:    ${(cfg.errorRate * 100).toFixed(1)}%`)
+  console.log(`  Live mode:     ${cfg.live ? 'yes' : 'no'}`)
+  if (cfg.live) {
+    console.log(`  Users:         ${cfg.users}`)
+    console.log(`  Duration:      ${cfg.duration > 0 ? cfg.duration + ' min' : 'unlimited'}`)
+  }
   console.log(`  Seed:          ${cfg.seed}`)
   console.log('')
   if (cfg.providerCount > 0) {
@@ -1013,13 +1335,12 @@ async function main() {
   }
   console.log(`   Created ${keys.length} keys`)
 
-  // 6. Execute requests
-  console.log(`6. Executing ${requests.length} requests...`)
+  // 6. Execute
   const startTime = Date.now()
 
   let metrics: RequestMetrics = {
-    total: requests.length,
-    success: requests.length,
+    total: 0,
+    success: 0,
     errors: 0,
     timeouts: 0,
     latencies: [],
@@ -1027,30 +1348,39 @@ async function main() {
     endTime: Date.now(),
   }
 
-  if (cfg.fast) {
-    executeFastInsert(requests, keyMap, db)
+  if (cfg.live) {
+    const allProviders = getAvailableProviders().slice(0, cfg.providerCount)
+    await runLiveSimulation(keys, allProviders, tfPort, keyMap, cfg, db, mock)
   } else {
-    metrics = await executeHttpRequests(requests, tfPort, keyMap, cfg)
-    // After HTTP execution, fix timestamps and re-insert with correct data
-    // so that Dashboard time distribution matches the simulation.
-    // The proxy pipeline was already exercised during the HTTP calls.
-    console.log('   Fixing timestamps after HTTP execution...')
-    db.exec('DELETE FROM request_logs')
-    db.exec('DELETE FROM sessions')
-    db.exec('DELETE FROM stats_aggregates')
-    executeFastInsert(requests, keyMap, db)
-  }
+    console.log(`6. Executing ${requests.length} requests...`)
+    metrics.total = requests.length
+    metrics.success = requests.length
 
-  // 7. Rebuild stats aggregates
-  console.log('7. Rebuilding stats aggregates...')
-  rebuildStatsAggregates(db)
+    if (cfg.fast) {
+      executeFastInsert(requests, keyMap, db)
+    } else {
+      metrics = await executeHttpRequests(requests, tfPort, keyMap, cfg)
+      // After HTTP execution, fix timestamps and re-insert with correct data
+      // so that Dashboard time distribution matches the simulation.
+      // The proxy pipeline was already exercised during the HTTP calls.
+      console.log('   Fixing timestamps after HTTP execution...')
+      db.exec('DELETE FROM request_logs')
+      db.exec('DELETE FROM sessions')
+      db.exec('DELETE FROM stats_aggregates')
+      executeFastInsert(requests, keyMap, db)
+    }
+
+    // 7. Rebuild stats aggregates
+    console.log('7. Rebuilding stats aggregates...')
+    rebuildStatsAggregates(db)
+  }
 
   const duration = Date.now() - startTime
 
-  // 9. Print summary
+  // 8. Print summary
   printSummary(db, cfg, duration, metrics)
 
-  // 10. Cleanup or keep
+  // 9. Cleanup or keep
   if (cfg.keep) {
     console.log('\n⏸️  Server is running. Press Ctrl+C to stop.')
     console.log(`   TF API:  http://127.0.0.1:${tfPort}`)
