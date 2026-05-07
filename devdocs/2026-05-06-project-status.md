@@ -1,8 +1,8 @@
 # Token Flow — 项目状态快照
 
-**日期**: 2026-05-06
+**日期**: 2026-05-07
 **分支**: `feat/typescript`
-**提交**: `1de649f` docs: update plan and project status for Layer 3 studio-sim
+**提交**: `78002b6` fix: call cleanupOldStats() on server startup
 **状态**: 核心功能全部就位，进入增强阶段
 
 ---
@@ -28,7 +28,7 @@
 
 | 文档 | 日期 | 状态 | 说明 |
 |------|------|------|------|
-| [project-status](2026-05-06-project-status.md) | 2026-05-06 | **最新** | 本文件，项目全景快照 |
+| [project-status](2026-05-06-project-status.md) | 2026-05-07 | **最新** | 本文件，项目全景快照 |
 | [analysis-dashboard-spec](2026-05-06-analysis-dashboard-spec.md) | 2026-05-06 | **最新** | Analysis Dashboard 改造设计决策 |
 | [provider-transformers-port-spec](2026-04-26-provider-transformers-port-spec.md) | 2026-04-26 | **最新** | 11 个 Provider Transformer 移植方案 |
 | [provider-transformers-test-plan](2026-04-26-provider-transformers-test-plan.md) | 2026-04-26 | **最新** | Provider Transformer 单元测试方案 |
@@ -101,8 +101,18 @@
 - [x] Layer 3 studio-sim：多项目/多 Session 高强度模拟脚本
   - `tests/simulation/studio-sim.ts`
   - Fast 模式（直写 DB）+ HTTP 模式（完整 proxy 链路）
-  - 4 个 Provider / 6 个 Key / 18 个 Session，按工作模式分布时间
+  - 11 个 Provider / 6 个 Key / 18 个 Session，按工作模式分布时间
   - 用于 Dashboard 数据填充和并发压力验证
+- [x] **Live Simulation 实时模拟模式** (2026-05-07)
+  - `--live` 持续运行，模拟真实团队 API 使用场景
+  - `--duration <min>` 定时停止，`--users <n>` 模拟用户数
+  - 3 种用户 Persona：Coder（高频/代码）、ChatUser（中频/对话）、Researcher（低频/深度研究）
+  - 每用户独立 session，累积对话历史，符合真实使用模式
+  - 每 10s 实时统计输出（含 per-persona 分布）
+  - SIGINT / duration 优雅退出，自动重建 stats_aggregates
+- [x] **启动时调用 `cleanupOldStats()`** (2026-05-07)
+  - `packages/server/src/index.ts` 中 `getDb()` 后调用 `cleanupOldStats()`
+  - 90 天旧数据自动清理
 
 ### Provider/Key 架构重构
 - [x] Provider = 完整上游配置 (name, template, base_url, api_key, models, options)
@@ -142,7 +152,6 @@
 ### 高优先级
 | 项目 | 说明 | 代码位置 |
 |------|------|----------|
-| **启动时调用 `cleanupOldStats()`** | 90 天旧数据自动清理函数已写但未在 server 启动时调用，需一行代码修复 | `packages/server/src/index.ts` |
 | **Anthropic streaming 转换** | `/v1/chat/completions` + `template=anthropic` 时，Anthropic SSE 未被转成 OpenAI chat.completion.chunk 格式（pass-through） | `packages/server/src/transformers/anthropic.ts:514` |
 
 ### 中/低优先级
@@ -163,7 +172,7 @@
 1. **Anthropic streaming**: 特定场景下 stream 格式可能不对（见高优先级待办）。
 2. **undici 版本**: 必须使用 undici@6，undici@8 在 Node 20 下会报错 (`webidl.util.markAsUncloneable is not a function`)。
 3. **Vertex 依赖**: `google-auth-library` 仅在 Vertex 系列 provider 中使用，需要配置 GCP 认证。
-4. **stats_aggregates 清理**: 保留 90 天数据，server 启动时未调用 `cleanupOldStats()`（见高优先级待办）。
+4. ~~**stats_aggregates 清理**: 保留 90 天数据，server 启动时未调用 `cleanupOldStats()`~~ — **已修复** (2026-05-07)。
 5. **pnpm build 前置**: `pnpm dev` 前需先 `pnpm build`，否则 `@tokenflow/shared` 的 `dist/` 缺失会导致 module not found。
 
 ---
@@ -199,7 +208,14 @@ npx tsx tests/simulation/studio-sim.ts --fast --requests 1000 --days 7
 # 高并发压力测试（走完整 proxy 链路）
 npx tsx tests/simulation/studio-sim.ts --requests 2000 --concurrency 50
 
-# 生成数据后保持 server 运行，配合 UI 查看
+# 实时模拟：10 人团队正常 API 使用，持续 30 分钟
+npx tsx tests/simulation/studio-sim.ts --live --duration 30 --users 10
+
+# 实时模拟 + 保持 server 运行（配合 UI 查看 Dashboard）
+npx tsx tests/simulation/studio-sim.ts --live --duration 60 --users 10 --keep
+# 另开终端: pnpm dev:ui
+
+# 生成历史数据后保持 server 运行，配合 UI 查看
 npx tsx tests/simulation/studio-sim.ts --keep --fast --requests 500 --days 3
 # 另开终端: pnpm dev:ui
 ```
@@ -208,8 +224,7 @@ npx tsx tests/simulation/studio-sim.ts --keep --fast --requests 500 --days 3
 
 ## 下一步建议（按优先级排序）
 
-1. **启动时调用 `cleanupOldStats()`** — `packages/server/src/index.ts` 中 `getDb()` 后加一行 `cleanupOldStats()`，确保 90 天旧数据自动清理。
-2. **Anthropic streaming 转换** — 如需覆盖 `/v1/chat/completions` + anthropic provider 的 stream 场景，需实现 SSE 格式转换（Anthropic SSE → OpenAI chat.completion.chunk）。
-3. **成本估算** — 配置模型单价表，在 Analysis Dashboard 展示预估费用。
-4. **Phase 11 高级检测器** — 如需更多智能分析能力，规划 DET-004~008。
-5. **国内平台转换器** — DashScope、MiniMax、智谱 GLM、月之暗面 Kimi 等国内平台支持。
+1. **Anthropic streaming 转换** — 如需覆盖 `/v1/chat/completions` + anthropic provider 的 stream 场景，需实现 SSE 格式转换（Anthropic SSE → OpenAI chat.completion.chunk）。
+2. **成本估算** — 配置模型单价表，在 Analysis Dashboard 展示预估费用。
+3. **Phase 11 高级检测器** — 如需更多智能分析能力，规划 DET-004~008。
+4. **国内平台转换器** — DashScope、MiniMax、智谱 GLM、月之暗面 Kimi 等国内平台支持。
