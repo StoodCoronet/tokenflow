@@ -1,5 +1,5 @@
 import { APP_NAME, APP_VERSION } from '@tokenflow/shared'
-import { getDb } from './db/schema.js'
+import { getDb, cleanupOldStats } from './db/schema.js'
 import { loadConfig } from './configLoader.js'
 import { createApp } from './app.js'
 
@@ -10,6 +10,7 @@ const app = await createApp(config)
 
 try {
   getDb(config.DATABASE)
+  cleanupOldStats()
   const addr = await app.listen({ port, host: '0.0.0.0' })
 
   console.log(`
