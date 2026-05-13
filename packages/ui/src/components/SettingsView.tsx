@@ -84,6 +84,14 @@ export function SettingsView() {
             className={inputClass}
           />
         </FieldRow>
+        <FieldRow label="Pricing Source">
+          <input
+            value={config.pricingSource || ''}
+            onChange={e => setConfig({ ...config, pricingSource: e.target.value })}
+            placeholder="https://your-domain.com/pricing.json"
+            className={inputClass}
+          />
+        </FieldRow>
       </Section>
 
       {/* Detectors */}
@@ -96,6 +104,86 @@ export function SettingsView() {
             </div>
           ))}
         </div>
+      </Section>
+
+      {/* Pricing */}
+      <Section title="Pricing" action={
+        <button
+          onClick={() => {
+            const model = prompt('Model name:')
+            if (!model) return
+            setConfig({
+              ...config,
+              Pricing: {
+                ...config.Pricing,
+                [model]: { prompt: 0, completion: 0 },
+              },
+            })
+          }}
+          className="text-xs px-2 py-1 bg-tf-accent/10 text-tf-accent rounded hover:bg-tf-accent/20"
+        >
+          + Add Model
+        </button>
+      }>
+        {Object.entries(config.Pricing || {}).length === 0 ? (
+          <div className="text-sm text-tf-muted py-2">No custom pricing. Default prices will be used.</div>
+        ) : (
+          <div className="space-y-2">
+            <div className="grid grid-cols-[1fr_80px_80px_32px] gap-2 text-xs text-tf-muted px-1">
+              <span>Model</span>
+              <span className="text-right">Prompt</span>
+              <span className="text-right">Completion</span>
+              <span />
+            </div>
+            {Object.entries(config.Pricing || {}).map(([model, p]: [string, any]) => (
+              <div key={model} className="grid grid-cols-[1fr_80px_80px_32px] gap-2 items-center">
+                <span className="text-sm text-tf-text truncate" title={model}>{model}</span>
+                <input
+                  type="number"
+                  step="0.001"
+                  value={p?.prompt ?? 0}
+                  onChange={e => {
+                    const val = parseFloat(e.target.value)
+                    setConfig({
+                      ...config,
+                      Pricing: {
+                        ...config.Pricing,
+                        [model]: { ...p, prompt: Number.isNaN(val) ? 0 : val },
+                      },
+                    })
+                  }}
+                  className={`${inputClass} !py-1 !px-2 text-right`}
+                />
+                <input
+                  type="number"
+                  step="0.001"
+                  value={p?.completion ?? 0}
+                  onChange={e => {
+                    const val = parseFloat(e.target.value)
+                    setConfig({
+                      ...config,
+                      Pricing: {
+                        ...config.Pricing,
+                        [model]: { ...p, completion: Number.isNaN(val) ? 0 : val },
+                      },
+                    })
+                  }}
+                  className={`${inputClass} !py-1 !px-2 text-right`}
+                />
+                <button
+                  onClick={() => {
+                    const next = { ...config.Pricing }
+                    delete next[model]
+                    setConfig({ ...config, Pricing: next })
+                  }}
+                  className="text-xs text-red-500 hover:text-red-400"
+                >
+                  x
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </Section>
 
       {/* Save */}

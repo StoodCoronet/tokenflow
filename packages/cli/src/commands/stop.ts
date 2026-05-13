@@ -1,23 +1,40 @@
 import chalk from 'chalk'
-import { getServerStatus, removePid } from '../utils/processManager.js'
+import { getAllServiceStatus, removePids, isProcessRunning } from '../utils/processManager.js'
+
+function killGracefully(pid: number): boolean {
+  try {
+    process.kill(pid, 'SIGTERM')
+    // Wait briefly and check
+    for (let i = 0; i < 10; i++) {
+      if (!isProcessRunning(pid)) return true
+      // Busy-wait ~100ms
+      const start = Date.now()
+      while (Date.now() - start < 100) { /* spin */ }
+    }
+    // Force kill
+    try { process.kill(pid, 'SIGKILL') } catch {}
+    return true
+  } catch (err: any) {
+    if (err.code === 'ESRCH') return true
+    return false
+  }
+}
 
 export function stopServer(): void {
-  const status = getServerStatus()
-  if (!status.running) {
-    console.log(chalk.yellow('Server is not running'))
+  const status = getAllServiceStatus()
+  const running = [status.server && status.pids.server, status.ui && status.pids.ui, status.docs && status.pids.docs]
+    .filter(Boolean) as number[]
+
+  if (running.length === 0) {
+    console.log(chalk.yellow('No services are running'))
     return
   }
 
-  try {
-    process.kill(status.pid!, 'SIGTERM')
-    removePid()
-    console.log(chalk.green('Server stopped'))
-  } catch (err: any) {
-    if (err.code === 'ESRCH') {
-      removePid()
-      console.log(chalk.yellow('Server process not found, cleaned up PID file'))
-    } else {
-      console.error(chalk.red(`Failed to stop server: ${err.message}`))
-    }
+  let stopped = 0
+  for (const pid of running) {
+    if (killGracefully(pid)) stopped++
   }
+
+  removePids()
+  console.log(chalk.green(`Stopped ${stopped}/${running.length} services`))
 }

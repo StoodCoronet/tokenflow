@@ -14,7 +14,7 @@ export function openUI(): void {
     status = getServerStatus()
   }
 
-  const url = `http://localhost:${config.UI_PORT}`
+  const url = `http://0.0.0.0:${config.UI_PORT}`
   console.log(chalk.green(`Opening UI: ${url}`))
   openBrowser(url)
 }

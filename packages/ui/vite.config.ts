@@ -7,8 +7,8 @@ export default defineConfig({
     host: true,
     port: 40002,
     proxy: {
-      '/api': 'http://localhost:40001',
-      '/v1': 'http://localhost:40001',
+      '/api': 'http://0.0.0.0:40001',
+      '/v1': 'http://0.0.0.0:40001',
     },
   },
 })

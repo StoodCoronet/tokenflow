@@ -118,6 +118,11 @@ export interface DetectorConfig {
   enabled: boolean
 }
 
+export interface ModelPricing {
+  prompt: number      // $ per 1M prompt tokens
+  completion: number  // $ per 1M completion tokens
+}
+
 export interface AppConfig {
   PORT: number
   UI_PORT: number
@@ -127,6 +132,8 @@ export interface AppConfig {
   Detectors: Record<string, DetectorConfig>
   LOG_LEVEL: string
   PROXY_URL: string
+  Pricing?: Record<string, ModelPricing>
+  pricingSource?: string  // URL to remote pricing JSON
 }
 
 // --- Detector Interface ---

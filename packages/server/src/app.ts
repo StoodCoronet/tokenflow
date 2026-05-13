@@ -18,7 +18,7 @@ export async function createApp(config: AppConfig) {
     return {
       name: APP_NAME,
       version: APP_VERSION,
-      docs: `http://localhost:${config.PORT}/docs`,
+      docs: `http://0.0.0.0:${config.PORT}/docs`,
     }
   })
 

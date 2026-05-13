@@ -6,6 +6,7 @@ import { showStatus } from './commands/status.js'
 import { openUI } from './commands/ui.js'
 import { configure } from './commands/config.js'
 import { showTldr } from './commands/tldr.js'
+import { listPricing, updatePricing } from './commands/pricing.js'
 import { APP_NAME, APP_VERSION } from '@tokenflow/shared'
 
 // Handle --tldr before commander parses
@@ -24,7 +25,7 @@ program
 
 program
   .command('start')
-  .description('Start the proxy server')
+  .description('Start server, UI, and docs')
   .option('-p, --port <port>', 'Server port')
   .action((opts) => {
     startServer(opts.port ? parseInt(opts.port, 10) : undefined)
@@ -32,14 +33,14 @@ program
 
 program
   .command('stop')
-  .description('Stop the proxy server')
+  .description('Stop all services')
   .action(() => {
     stopServer()
   })
 
 program
   .command('restart')
-  .description('Restart the proxy server')
+  .description('Restart all services')
   .option('-p, --port <port>', 'Server port')
   .action((opts) => {
     restartServer(opts.port ? parseInt(opts.port, 10) : undefined)
@@ -47,7 +48,7 @@ program
 
 program
   .command('status')
-  .description('Show server status')
+  .description('Show all service statuses')
   .action(() => {
     showStatus()
   })
@@ -64,6 +65,21 @@ program
   .description('Interactive configuration')
   .action(async () => {
     await configure()
+  })
+
+program
+  .command('pricing')
+  .description('Manage model pricing')
+  .option('-u, --update', 'Pull latest prices from configured source')
+  .option('-l, --list', 'List current model prices')
+  .action(async (opts) => {
+    if (opts.update) {
+      await updatePricing()
+    } else if (opts.list) {
+      listPricing()
+    } else {
+      listPricing()
+    }
   })
 
 program.addHelpText('after', '\n  Use --tldr for a quick reference guide')

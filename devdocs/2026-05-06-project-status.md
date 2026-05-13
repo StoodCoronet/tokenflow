@@ -28,25 +28,26 @@
 
 | 文档 | 日期 | 状态 | 说明 |
 |------|------|------|------|
-| [project-status](2026-05-06-project-status.md) | 2026-05-07 | **最新** | 本文件，项目全景快照 |
-| [analysis-dashboard-spec](2026-05-06-analysis-dashboard-spec.md) | 2026-05-06 | **最新** | Analysis Dashboard 改造设计决策 |
-| [provider-transformers-port-spec](2026-04-26-provider-transformers-port-spec.md) | 2026-04-26 | **最新** | 11 个 Provider Transformer 移植方案 |
-| [provider-transformers-test-plan](2026-04-26-provider-transformers-test-plan.md) | 2026-04-26 | **最新** | Provider Transformer 单元测试方案 |
-| [test-plan-comparison](2026-04-26-test-plan-comparison.md) | 2026-04-26 | **参考** | Phase 9 旧版 vs 新版测试方案对比 |
-| [phase9-test-plan](2026-04-20-phase9-test-plan.md) | 2026-04-20 | **最新** | Phase 9 测试体系（Mock 优先） |
-| [phase8.5-transformer-audit-spec](2026-04-20-phase8.5-transformer-audit-spec.md) | 2026-04-20 | **参考** | Phase 8.5 Transformer 审计与重构 |
-| [plan](2026-04-19-plan.md) | 2026-04-19 | **过时** | 早期实现计划，被 project-status 取代 |
-| [phase9-test-plan](2026-04-19-phase9-test-plan.md) | 2026-04-19 | **过时** | 被 2026-04-20 版取代 |
-| [ccr-research](2026-04-19-ccr-research.md) | 2026-04-19 | **参考** | CCR Transformer 架构调研 |
-| [sessions-page-spec](2026-04-18-sessions-page-spec.md) | 2026-04-18 | **过时** | Sessions 页面早期设计 |
-| [plan](2026-04-18-plan.md) | 2026-04-18 | **过时** | 早期实现计划 |
-| [feature-comparison](2026-04-17-feature-comparison.md) | 2026-04-17 | **参考** | CCR vs Token Flow 功能对比 |
-| [typescript-rewrite-plan](2026-04-16-typescript-rewrite-plan.md) | 2026-04-16 | **参考** | TypeScript 重写计划 |
-| [cli-redesign](2026-04-16-cli-redesign.md) | 2026-04-16 | **过时** | CLI 重设计早期笔记 |
-| [cli-redesign](2026-04-15-cli-redesign.md) | 2026-04-15 | **过时** | CLI 重设计早期笔记 |
-| [spec](2026-03-26-spec.md) | 2026-03-26 | **参考** | 产品规格、架构、数据模型 |
-| [deploy](2026-03-26-deploy.md) | 2026-03-26 | **过时** | Python 版本部署指南（legacy） |
-| [readme](2026-03-26-readme.md) | 2026-03-26 | **过时** | 早期 README |
+| **[plan](2026-05-10-plan.md)** | **2026-05-10** | **最新** | **最新实施计划，取代所有旧版 plan** |
+| [project-status](2026-05-06-project-status.md) | 2026-05-07 | 历史参考 | 本文件，项目全景快照（计划部分已过时） |
+| [analysis-dashboard-spec](2026-05-06-analysis-dashboard-spec.md) | 2026-05-06 | 参考 | Analysis Dashboard 改造设计决策（已实现） |
+| [provider-transformers-port-spec](2026-04-26-provider-transformers-port-spec.md) | 2026-04-26 | 参考 | 11 个 Provider Transformer 移植方案（已完成） |
+| [provider-transformers-test-plan](2026-04-26-provider-transformers-test-plan.md) | 2026-04-26 | 参考 | Provider Transformer 单元测试方案（已完成） |
+| [test-plan-comparison](2026-04-26-test-plan-comparison.md) | 2026-04-26 | 参考 | Phase 9 旧版 vs 新版测试方案对比 |
+| [phase9-test-plan](2026-04-20-phase9-test-plan.md) | 2026-04-20 | 参考 | Phase 9 测试体系（Mock 优先）（已完成） |
+| [phase8.5-transformer-audit-spec](2026-04-20-phase8.5-transformer-audit-spec.md) | 2026-04-20 | 参考 | Phase 8.5 Transformer 审计与重构（已完成） |
+| [plan](2026-04-19-plan.md) | 2026-04-19 | **已取代** | **被 2026-05-10-plan.md 取代** |
+| [phase9-test-plan](2026-04-19-phase9-test-plan.md) | 2026-04-19 | **已取代** | **被 2026-04-20 版取代** |
+| [ccr-research](2026-04-19-ccr-research.md) | 2026-04-19 | 参考 | CCR Transformer 架构调研 |
+| [sessions-page-spec](2026-04-18-sessions-page-spec.md) | 2026-04-18 | **已取代** | **被当前实现取代** |
+| [plan](2026-04-18-plan.md) | 2026-04-18 | **已取代** | **被 2026-05-10-plan.md 取代** |
+| [feature-comparison](2026-04-17-feature-comparison.md) | 2026-04-17 | 参考 | CCR vs Token Flow 功能对比 |
+| [typescript-rewrite-plan](2026-04-16-typescript-rewrite-plan.md) | 2026-04-16 | 参考 | TypeScript 重写计划 |
+| [cli-redesign](2026-04-16-cli-redesign.md) | 2026-04-16 | **已取代** | **被当前实现取代** |
+| [cli-redesign](2026-04-15-cli-redesign.md) | 2026-04-15 | **已取代** | **被当前实现取代** |
+| [spec](2026-03-26-spec.md) | 2026-03-26 | 参考 | 产品规格、架构、数据模型 |
+| [deploy](2026-03-26-deploy.md) | 2026-03-26 | 过时 | Python 版本部署指南（legacy） |
+| [readme](2026-03-26-readme.md) | 2026-03-26 | 过时 | 早期 README |
 
 > **API 参考文档** 位于 `devdocs/api-docs/`，包含 OpenAI、Anthropic 官方文档及精简版参考。
 

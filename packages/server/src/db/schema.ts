@@ -202,14 +202,16 @@ export function insertRequestLog(log: {
   efficiency_score: number
   request_data: string
   response_data: string
+  estimated_cost?: number
 }) {
   const db = getDb()
   db.prepare(`
     INSERT INTO request_logs (id, api_key_id, session_id, model, prompt_tokens, completion_tokens,
-      total_tokens, status, detected_pattern, efficiency_score, request_data, response_data, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      total_tokens, status, detected_pattern, efficiency_score, request_data, response_data, created_at, estimated_cost)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(log.id, log.api_key_id, log.session_id, log.model, log.prompt_tokens, log.completion_tokens,
-    log.total_tokens, log.status, log.detected_pattern, log.efficiency_score, log.request_data, log.response_data, timestamp())
+    log.total_tokens, log.status, log.detected_pattern, log.efficiency_score, log.request_data, log.response_data, timestamp(),
+    log.estimated_cost ?? 0)
 }
 
 // --- Session ---
@@ -270,6 +272,7 @@ export function upsertStatsAggregate(log: {
   total_tokens: number
   efficiency_score: number
   detected_pattern: string | null
+  estimated_cost?: number
 }) {
   const now = new Date()
   const hourWindow = floorToHour(now)
@@ -295,6 +298,7 @@ function _upsertStatsRow(
     total_tokens: number
     efficiency_score: number
     detected_pattern: string | null
+    estimated_cost?: number
   }
 ) {
   const db = getDb()
@@ -302,8 +306,8 @@ function _upsertStatsRow(
 
   db.prepare(`
     INSERT OR IGNORE INTO stats_aggregates
-    (window_type, window_start, api_key_id, model, request_count, prompt_tokens, completion_tokens, total_tokens, avg_efficiency)
-    VALUES (?, ?, ?, ?, 0, 0, 0, 0, 0)
+    (window_type, window_start, api_key_id, model, request_count, prompt_tokens, completion_tokens, total_tokens, avg_efficiency, estimated_cost)
+    VALUES (?, ?, ?, ?, 0, 0, 0, 0, 0, 0)
   `).run(window_type, window_start, api_key_id, modelVal)
 
   const validPatterns = ['full_context', 'sliding_window', 'summarization']
@@ -319,7 +323,8 @@ function _upsertStatsRow(
       prompt_tokens = prompt_tokens + ?,
       completion_tokens = completion_tokens + ?,
       total_tokens = total_tokens + ?,
-      avg_efficiency = (avg_efficiency * request_count + ?) / (request_count + 1)
+      avg_efficiency = (avg_efficiency * request_count + ?) / (request_count + 1),
+      estimated_cost = estimated_cost + ?
       ${patternUpdate}
     WHERE window_type = ? AND window_start = ? AND api_key_id = ? AND model IS ?
   `).run(
@@ -327,6 +332,7 @@ function _upsertStatsRow(
     log.completion_tokens,
     log.total_tokens,
     log.efficiency_score,
+    log.estimated_cost ?? 0,
     window_type,
     window_start,
     api_key_id,

@@ -53,7 +53,8 @@ export async function registerRoutes(app: FastifyInstance) {
              COALESCE(SUM(prompt_tokens), 0) as total_prompt,
              COALESCE(SUM(completion_tokens), 0) as total_completion,
              COALESCE(SUM(total_tokens), 0) as total_tokens,
-             COALESCE(AVG(avg_efficiency), 0) as avg_efficiency
+             COALESCE(AVG(avg_efficiency), 0) as avg_efficiency,
+             COALESCE(SUM(estimated_cost), 0) as total_cost
       FROM stats_aggregates
       WHERE window_type = ? AND window_start >= datetime('now', ?) AND model IS NULL
     `).get(windowType, rangeOffset) as any
@@ -101,6 +102,27 @@ export async function registerRoutes(app: FastifyInstance) {
       WHERE window_type = ? AND window_start >= datetime('now', ?) AND model IS NULL
     `).get(windowType, rangeOffset) as any
 
+    const recentLogs = db.prepare(`
+      SELECT model, total_tokens, detected_pattern, efficiency_score, created_at
+      FROM request_logs
+      WHERE created_at >= datetime('now', ?)
+      ORDER BY created_at DESC
+      LIMIT 20
+    `).all(rangeOffset)
+
+    const keyTrends = db.prepare(`
+      SELECT
+        s.window_start,
+        s.api_key_id,
+        k.name as key_name,
+        SUM(s.total_tokens) as total_tokens
+      FROM stats_aggregates s
+      LEFT JOIN api_keys k ON s.api_key_id = k.id
+      WHERE s.window_type = ? AND s.window_start >= datetime('now', ?) AND s.model IS NULL
+      GROUP BY s.window_start, s.api_key_id
+      ORDER BY s.window_start ASC
+    `).all(windowType, rangeOffset)
+
     const totalRequests = summary.total_requests || 0
     const patternTotal = (patternDistribution.full_context || 0) + (patternDistribution.sliding_window || 0) + (patternDistribution.summarization || 0)
 
@@ -108,10 +130,13 @@ export async function registerRoutes(app: FastifyInstance) {
       range,
       window_type: windowType,
       total_requests: totalRequests,
+      total_tokens: summary.total_tokens || 0,
       total_prompt_tokens: summary.total_prompt || 0,
       total_completion_tokens: summary.total_completion || 0,
       avg_efficiency: Math.round(summary.avg_efficiency || 0),
+      total_cost: summary.total_cost || 0,
       trend,
+      key_trends: keyTrends,
       key_distribution: keyDistribution,
       model_distribution: modelDistribution,
       grade_distribution: {
@@ -126,6 +151,7 @@ export async function registerRoutes(app: FastifyInstance) {
         summarization: patternDistribution.summarization || 0,
         none: Math.max(0, totalRequests - patternTotal),
       },
+      recent_logs: recentLogs,
       anomalies: detectAnomalies(db, windowType),
     }
   })

@@ -1,5 +1,30 @@
 import { useState, useEffect, useRef } from 'react'
-import { fetchConfig, updateConfig, fetchKeys, createKey, deleteKey, fetchProviderModels } from '../api'
+import { fetchConfig, updateConfig, fetchKeys, createKey, deleteKey, fetchProviderModels, fetchDashboard } from '../api'
+
+// Simple pricing map: $ per 1M tokens (prompt, completion)
+const MODEL_PRICES: Record<string, [number, number]> = {
+  'gpt-4o': [5, 15],
+  'gpt-4o-mini': [0.15, 0.6],
+  'claude-3-5-sonnet': [3, 15],
+  'claude-3-5-sonnet-20241022': [3, 15],
+  'claude-3-opus-20240229': [15, 75],
+  'deepseek-chat': [0.14, 0.28],
+  'deepseek-coder': [0.14, 0.28],
+  'gemini-1.5-pro': [1.25, 5],
+  'gemini-1.5-flash': [0.075, 0.3],
+  'llama-3.1-70b-versatile': [0.59, 0.79],
+  'mixtral-8x7b-32768': [0.24, 0.24],
+  'gemma-7b-it': [0.1, 0.1],
+  'llama3.1-70b': [0.6, 1.2],
+  'llama3.1-8b': [0.1, 0.2],
+}
+
+function estimateCost(model: string, promptTokens: number, completionTokens: number): number {
+  const prices = MODEL_PRICES[model]
+  if (!prices) return 0
+  const [promptPrice, completionPrice] = prices
+  return (promptTokens * promptPrice + completionTokens * completionPrice) / 1_000_000
+}
 
 interface Provider {
   name: string
@@ -16,6 +41,7 @@ type Lang = 'curl' | 'python' | 'typescript'
 export function ProvidersPage() {
   const [config, setConfig] = useState<any>(null)
   const [keys, setKeys] = useState<any[]>([])
+  const [dashboard, setDashboard] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null)
@@ -28,9 +54,12 @@ export function ProvidersPage() {
     setLoading(true)
     setError(null)
     try {
-      const [cfgRes, keysRes] = await Promise.all([fetchConfig(), fetchKeys()])
+      const [cfgRes, keysRes, dashRes] = await Promise.all([
+        fetchConfig(), fetchKeys(), fetchDashboard('7d')
+      ])
       setConfig(cfgRes.data)
       setKeys(keysRes.data || [])
+      setDashboard(dashRes.data)
     } catch (err: any) {
       setError(err.message || 'Failed to load')
     } finally {
@@ -110,8 +139,10 @@ export function ProvidersPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {providers.map((p) => {
-            const keyCount = keys.filter((k: any) => k.provider === p.name).length
+            const providerKeys = keys.filter((k: any) => k.provider === p.name)
+            const keyCount = providerKeys.length
             const isSelected = selectedProvider === p.name
+            const stats = computeProviderStats(p.name, providerKeys, dashboard)
             return (
               <div
                 key={p.name}
@@ -130,6 +161,39 @@ export function ProvidersPage() {
                   <span className="text-xs text-tf-muted">{keyCount} key{keyCount !== 1 ? 's' : ''}</span>
                 </div>
                 <div className="text-xs text-tf-muted truncate mb-3">{p.api_base_url}</div>
+
+                {/* Usage metadata */}
+                {stats.totalTokens > 0 && (
+                  <div className="mb-3 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-tf-muted">7d usage</span>
+                      <span className="text-tf-text font-medium">{formatProviderTokens(stats.totalTokens)} tok</span>
+                    </div>
+                    {stats.sparkline.length > 0 && (
+                      <div className="h-8 flex items-end gap-px">
+                        {stats.sparkline.map((v: number, i: number) => {
+                          const max = Math.max(...stats.sparkline, 1)
+                          const h = Math.max(2, (v / max) * 100)
+                          return (
+                            <div
+                              key={i}
+                              className="flex-1 bg-tf-accent/40 rounded-t-sm"
+                              style={{ height: `${h}%` }}
+                              title={`${v} tokens`}
+                            />
+                          )
+                        })}
+                      </div>
+                    )}
+                    {stats.estimatedCost > 0 && (
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-tf-muted">Est. cost</span>
+                        <span className="text-tf-text font-medium">${stats.estimatedCost.toFixed(2)}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="flex gap-2">
                   <button
                     onClick={(e) => { e.stopPropagation(); setEditingProvider(p); setShowProviderForm(true) }}
@@ -196,7 +260,10 @@ export function ProvidersPage() {
                   <div key={k.id} className="flex items-center justify-between bg-tf-bg border border-tf-border rounded-lg px-3 py-2">
                     <div>
                       <div className="text-sm text-tf-text">{k.name}</div>
-                      <div className="text-xs text-tf-muted font-mono mt-0.5">{k.id}</div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <code className="text-xs text-tf-muted font-mono">{k.id.slice(0, 8)}...{k.id.slice(-4)}</code>
+                        <CopyKeyButton keyId={k.id} />
+                      </div>
                     </div>
                     <div className="flex items-center gap-3">
                       {k.scenario && <span className="text-xs text-tf-muted bg-tf-border px-1.5 py-0.5 rounded">{k.scenario}</span>}
@@ -242,6 +309,100 @@ export function ProvidersPage() {
       )}
     </div>
   )
+}
+
+function CopyKeyButton({ keyId }: { keyId: string }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(keyId)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      const textarea = document.createElement('textarea')
+      textarea.value = keyId
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    }
+  }
+
+  return (
+    <button
+      onClick={handleCopy}
+      title={copied ? 'Copied!' : 'Copy full key'}
+      className="text-[11px] px-1.5 py-0.5 rounded border border-tf-border text-tf-muted hover:text-tf-accent hover:border-tf-accent/50 transition-colors"
+    >
+      {copied ? '✓' : 'Copy'}
+    </button>
+  )
+}
+
+function formatProviderTokens(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
+  return String(n)
+}
+
+function computeProviderStats(providerName: string, providerKeys: any[], dashboard: any | null) {
+  if (!dashboard?.key_distribution) {
+    return { totalTokens: 0, sparkline: [], estimatedCost: 0 }
+  }
+
+  const keyIds = new Set(providerKeys.map((k) => k.id))
+
+  // Total tokens from key_distribution
+  let totalTokens = 0
+  let totalRequests = 0
+  for (const kd of dashboard.key_distribution) {
+    if (keyIds.has(kd.api_key_id)) {
+      totalTokens += kd.total_tokens || 0
+      totalRequests += kd.request_count || 0
+    }
+  }
+
+  // Sparkline from key_trends aggregated by window
+  const windowMap = new Map<string, number>()
+  if (dashboard.key_trends) {
+    for (const kt of dashboard.key_trends) {
+      if (keyIds.has(kt.api_key_id)) {
+        const w = kt.window_start as string
+        windowMap.set(w, (windowMap.get(w) || 0) + (kt.total_tokens || 0))
+      }
+    }
+  }
+  const sparkline = Array.from(windowMap.entries())
+    .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime())
+    .map(([, v]) => v)
+
+  // Rough cost estimate: use average of model prices if we have model distribution
+  let estimatedCost = 0
+  if (dashboard.model_distribution) {
+    for (const md of dashboard.model_distribution) {
+      const prices = MODEL_PRICES[md.model]
+      if (prices) {
+        // Rough: assume 70% prompt, 30% completion
+        const prompt = md.total_tokens * 0.7
+        const completion = md.total_tokens * 0.3
+        estimatedCost += estimateCost(md.model, prompt, completion)
+      }
+    }
+    // Scale down by provider's share of total tokens
+    const globalTotal = dashboard.model_distribution.reduce(
+      (s: number, m: any) => s + (m.total_tokens || 0), 0
+    )
+    if (globalTotal > 0) {
+      estimatedCost = estimatedCost * (totalTokens / globalTotal)
+    }
+  }
+
+  return { totalTokens, sparkline, estimatedCost }
 }
 
 function ApiExampleTabs({ endpointBase, apiKey, template, providerName }: {

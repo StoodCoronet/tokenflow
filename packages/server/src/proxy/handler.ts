@@ -153,6 +153,13 @@ function extractUsage(raw: any): { prompt_tokens: number; completion_tokens: num
   return { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
 }
 
+function computeCost(model: string, promptTokens: number, completionTokens: number): number {
+  const config = loadConfig()
+  const pricing = config.Pricing?.[model]
+  if (!pricing) return 0
+  return (promptTokens * pricing.prompt + completionTokens * pricing.completion) / 1_000_000
+}
+
 function logRequest(
   apiKeyId: string,
   body: any,
@@ -161,6 +168,7 @@ function logRequest(
   analysis: any
 ) {
   const sessionId = body.session_id || `auto-${generateId().slice(0, 8)}`
+  const estimatedCost = computeCost(body.model || 'unknown', usage.prompt_tokens, usage.completion_tokens)
 
   insertRequestLog({
     id: generateId(),
@@ -175,6 +183,7 @@ function logRequest(
     efficiency_score: analysis?.efficiency_score ?? 0,
     request_data: JSON.stringify(body),
     response_data: '{}',
+    estimated_cost: estimatedCost,
   })
 
   upsertSession({
@@ -193,5 +202,6 @@ function logRequest(
     total_tokens: usage.total_tokens,
     efficiency_score: analysis?.efficiency_score ?? 0,
     detected_pattern: analysis?.detected_pattern ?? null,
+    estimated_cost: estimatedCost,
   })
 }

@@ -25,6 +25,8 @@
  *   --live             实时模拟模式：持续运行模拟真实团队 API 使用
  *   --duration <m>     实时模式运行时长（分钟），0 表示无限运行 (默认: 0)
  *   --users <n>        实时模式模拟用户数 (默认: 10)
+ *   --heartbeat        实时模式启用心跳：模拟用户间发送轻量 keepalive 消息
+ *   --heartbeat-interval <s> 心跳间隔秒数 (默认: 30)
  *
  * Examples:
  *   # 默认：500 请求，最近 24 小时，6 个 key，全部可用 provider
@@ -75,6 +77,9 @@ interface SimConfig {
   live: boolean
   duration: number
   users: number
+  heartbeat: boolean
+  heartbeatInterval: number
+  dbPath?: string
 }
 
 interface SimProvider {
@@ -144,6 +149,9 @@ function parseArgs(): SimConfig {
     live: has('--live'),
     duration: parseInt(get('--duration', '0'), 10),
     users: parseInt(get('--users', '10'), 10),
+    heartbeat: has('--heartbeat'),
+    heartbeatInterval: parseInt(get('--heartbeat-interval', '30'), 10),
+    dbPath: get('--db', ''),
   }
 }
 
@@ -1114,6 +1122,65 @@ async function runLiveSimulation(
     }, cfg.duration * 60 * 1000)
   }
 
+  const HEARTBEAT_QUERIES = ['ping', 'ok', 'continue', 'yes', 'go on', 'next']
+
+  async function sendRequest(
+    apiKey: string,
+    sessionId: string,
+    model: string,
+    messages: Array<{ role: string; content: string }>,
+    stream: boolean,
+    isHeartbeat: boolean
+  ): Promise<string> {
+    const reqStart = Date.now()
+    let responseContent = ''
+    try {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 5000)
+      const res = await fetch(`http://127.0.0.1:${tfPort}/v1/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': apiKey,
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          stream,
+          session_id: sessionId,
+        }),
+        signal: controller.signal,
+      })
+      clearTimeout(timeoutId)
+      stats.requests++
+      if (res.ok) {
+        stats.success++
+        if (!stream) {
+          try {
+            const body = await res.json() as any
+            responseContent = body.choices?.[0]?.message?.content || generateResponseContent()
+          } catch {
+            responseContent = generateResponseContent()
+          }
+        } else {
+          responseContent = generateResponseContent()
+        }
+      } else {
+        stats.errors++
+        responseContent = generateResponseContent()
+      }
+    } catch (err: any) {
+      stats.requests++
+      if (err.name === 'AbortError') {
+        stats.timeouts++
+      } else {
+        stats.errors++
+      }
+      responseContent = generateResponseContent()
+    }
+    return responseContent
+  }
+
   async function userLoop(userIndex: number) {
     const key = keys[userIndex % keys.length]
     const apiKey = keyMap.get(key.id)!
@@ -1127,79 +1194,61 @@ async function runLiveSimulation(
       await new Promise((r) => setTimeout(r, delayMs))
       if (!running.value) break
 
-      // Build messages with accumulated history
       const messages: Array<{ role: string; content: string }> = []
 
-      // Add system prompt on first turn or randomly
       if (history.length === 0 || randBool(0.1)) {
         messages.push({ role: 'system', content: randPick(persona.systemPrompts) })
       }
 
-      // Include recent history (sliding window for coding/chat, full for research)
       const maxHistory = persona.pattern === 'full_context' ? 30 : 8
       const recentHistory = history.slice(-maxHistory)
       messages.push(...recentHistory)
 
-      // Add new user query
       const query = randPick(persona.queries)
       messages.push({ role: 'user', content: query })
 
       const model = randPick(provider.models)
       const stream = randBool(persona.streamRatio)
 
-      const reqStart = Date.now()
-      let responseContent = ''
-      try {
-        const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 5000)
-        const res = await fetch(`http://127.0.0.1:${tfPort}/v1/chat/completions`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-API-Key': apiKey,
-          },
-          body: JSON.stringify({
-            model,
-            messages,
-            stream,
-            session_id: sessionId,
-          }),
-          signal: controller.signal,
-        })
-        clearTimeout(timeoutId)
-        stats.requests++
-        if (res.ok) {
-          stats.success++
-          // Try to extract response content for history accumulation (non-streaming only)
-          if (!stream) {
-            try {
-              const body = await res.json() as any
-              responseContent = body.choices?.[0]?.message?.content || generateResponseContent()
-            } catch {
-              responseContent = generateResponseContent()
-            }
-          } else {
-            responseContent = generateResponseContent()
-          }
-        } else {
-          stats.errors++
-          responseContent = generateResponseContent()
-        }
-      } catch (err: any) {
-        stats.requests++
-        if (err.name === 'AbortError') {
-          stats.timeouts++
-        } else {
-          stats.errors++
-        }
-        responseContent = generateResponseContent()
-      }
+      const responseContent = await sendRequest(apiKey, sessionId, model, messages, stream, false)
 
-      // Accumulate conversation history
       history.push({ role: 'user', content: query })
       history.push({ role: 'assistant', content: responseContent })
 
-      // Trim history to prevent unbounded growth
+      if (history.length > maxHistory * 2) {
+        const trimmed = history.slice(-maxHistory * 2)
+        history.length = 0
+        history.push(...trimmed)
+      }
+    }
+  }
+
+  async function heartbeatLoop() {
+    if (!cfg.heartbeat) return
+    while (running.value) {
+      await new Promise((r) => setTimeout(r, cfg.heartbeatInterval * 1000))
+      if (!running.value) break
+
+      // Pick a random user and send a lightweight heartbeat message
+      const userIndex = randInt(0, userCount - 1)
+      const key = keys[userIndex % keys.length]
+      const apiKey = keyMap.get(key.id)!
+      const sessionId = userSessions.get(userIndex)!
+      const provider = providers.find((p) => p.name === key.provider)!
+      const history = userMessageHistory.get(userIndex)!
+
+      const messages: Array<{ role: string; content: string }> = []
+      const maxHistory = 4
+      const recentHistory = history.slice(-maxHistory)
+      messages.push(...recentHistory)
+      messages.push({ role: 'user', content: randPick(HEARTBEAT_QUERIES) })
+
+      const model = randPick(provider.models)
+      const responseContent = await sendRequest(apiKey, sessionId, model, messages, false, true)
+
+      history.push({ role: 'user', content: randPick(HEARTBEAT_QUERIES) })
+      history.push({ role: 'assistant', content: responseContent })
+
       if (history.length > maxHistory * 2) {
         const trimmed = history.slice(-maxHistory * 2)
         history.length = 0
@@ -1223,10 +1272,16 @@ async function runLiveSimulation(
   } else {
     console.log(`   Duration: unlimited`)
   }
+  if (cfg.heartbeat) {
+    console.log(`   Heartbeat: every ${cfg.heartbeatInterval}s`)
+  }
 
   const loops: Promise<void>[] = []
   for (let i = 0; i < userCount; i++) {
     loops.push(userLoop(i))
+  }
+  if (cfg.heartbeat) {
+    loops.push(heartbeatLoop())
   }
 
   await Promise.all(loops)
@@ -1262,6 +1317,7 @@ async function main() {
   if (cfg.live) {
     console.log(`  Users:         ${cfg.users}`)
     console.log(`  Duration:      ${cfg.duration > 0 ? cfg.duration + ' min' : 'unlimited'}`)
+    console.log(`  Heartbeat:     ${cfg.heartbeat ? `yes (${cfg.heartbeatInterval}s)` : 'no'}`)
   }
   console.log(`  Seed:          ${cfg.seed}`)
   console.log('')
@@ -1296,7 +1352,7 @@ async function main() {
     PORT: cfg.port,
     UI_PORT: 0,
     APIKEY: '',
-    DATABASE: ':memory:',
+    DATABASE: cfg.dbPath || ':memory:',
     Providers: providers,
     Detectors: {
       fullContext: { enabled: true },
@@ -1309,18 +1365,18 @@ async function main() {
   writeFileSync(configPath, JSON.stringify(appConfig, null, 2))
 
   process.env.TOKENFLOW_CONFIG_PATH = configPath
-  process.env.TOKENFLOW_DB_PATH = ':memory:'
+  process.env.TOKENFLOW_DB_PATH = cfg.dbPath || ':memory:'
 
   // 3. Start Token Flow server
   console.log('3. Starting Token Flow server...')
   resetDb()
   const loadedConfig = loadConfig()
   const tfApp = await createApp(loadedConfig)
-  const db = getDb(':memory:')
-  const addr = await tfApp.listen({ port: cfg.port || 0, host: '127.0.0.1' })
+  const db = getDb(cfg.dbPath || ':memory:')
+  const addr = await tfApp.listen({ port: cfg.port || 0, host: '0.0.0.0' })
   const tfPort = parseInt(addr.split(':').pop()!, 10)
   console.log(`   Token Flow:    http://127.0.0.1:${tfPort}`)
-  console.log(`   Dashboard:     http://localhost:40002 (start with pnpm dev:ui)`)
+  console.log(`   Dashboard:     http://0.0.0.0:40002 (start with pnpm dev:ui)`)
 
   // 4. Generate simulation data
   console.log('4. Generating simulation data...')

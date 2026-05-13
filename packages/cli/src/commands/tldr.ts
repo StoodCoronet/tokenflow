@@ -3,7 +3,7 @@ import { loadConfig } from '../utils/configLoader.js'
 
 export function showTldr(): void {
   const config = loadConfig()
-  const host = 'localhost'
+  const host = '0.0.0.0'
 
   console.log(chalk.bold('Token Flow — Quick Reference'))
   console.log()

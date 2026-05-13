@@ -1,6 +1,6 @@
 import { useState, useEffect, Component } from 'react'
 import type { ReactNode } from 'react'
-import { fetchDashboard, fetchKeys, fetchSessions, createKey, updateKey, deleteKey, fetchConfig } from './api'
+import { fetchKeys, fetchSessions } from './api'
 import { ThemeToggle } from './components/ThemeToggle'
 import { ProvidersPage } from './components/ProvidersPage'
 import { SessionsOverview } from './components/SessionsOverview'
@@ -11,7 +11,7 @@ import { SessionDetail } from './components/SessionDetail'
 import { AnalysisView } from './components/AnalysisView'
 import { SettingsView } from './components/SettingsView'
 
-type Tab = 'dashboard' | 'providers' | 'sessions' | 'analysis' | 'settings'
+type Tab = 'providers' | 'sessions' | 'analysis' | 'settings'
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
   state = { error: null as string | null }
@@ -31,8 +31,16 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: string |
   }
 }
 
+function getInitialTab(): Tab {
+  const hash = window.location.hash.replace('#', '')
+  // Dashboard was removed; redirect old bookmarks to analysis
+  if (hash === 'dashboard') return 'analysis'
+  const valid: Tab[] = ['providers', 'sessions', 'analysis', 'settings']
+  return valid.includes(hash as Tab) ? (hash as Tab) : 'providers'
+}
+
 export default function App() {
-  const [tab, setTab] = useState<Tab>('providers')
+  const [tab, setTab] = useState<Tab>(getInitialTab)
   const [data, setData] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -42,8 +50,7 @@ export default function App() {
     setError(null)
     setLoading(true)
 
-    const fetcher = tab === 'dashboard' ? fetchDashboard
-      : tab === 'providers' ? fetchKeys
+    const fetcher = tab === 'providers' ? fetchKeys
       : () => fetchSessions()
 
     fetcher()
@@ -52,13 +59,17 @@ export default function App() {
       .finally(() => setLoading(false))
   }, [tab])
 
+  useEffect(() => {
+    window.location.hash = tab
+  }, [tab])
+
   return (
     <ErrorBoundary>
     <div className="min-h-screen bg-tf-bg transition-colors">
       <nav className="bg-tf-card border-b border-tf-border px-6 py-3 flex items-center gap-6">
         <h1 className="text-lg font-semibold text-tf-text tracking-tight">Token Flow</h1>
         <div className="flex gap-1">
-          {(['dashboard', 'providers', 'sessions', 'analysis', 'settings'] as Tab[]).map(t => (
+          {(['providers', 'sessions', 'analysis', 'settings'] as Tab[]).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -99,7 +110,6 @@ export default function App() {
             Loading...
           </div>
         )}
-        {!loading && !error && tab === 'dashboard' && <Dashboard data={data} />}
         {tab === 'providers' && <ProvidersPage />}
         {tab === 'sessions' && <SessionsPage />}
         {tab === 'analysis' && <AnalysisView />}
@@ -107,29 +117,6 @@ export default function App() {
       </main>
     </div>
     </ErrorBoundary>
-  )
-}
-
-function Dashboard({ data }: { data: any }) {
-  return (
-    <div>
-      <div className="grid grid-cols-3 gap-4 mb-8">
-        <StatCard label="Total Requests" value={data.total_requests} />
-        <StatCard label="Total Tokens" value={data.total_tokens?.toLocaleString()} />
-        <StatCard label="Avg Efficiency" value={`${data.avg_efficiency}%`} />
-      </div>
-      <h2 className="text-sm font-medium text-tf-muted uppercase tracking-wide mb-3">Recent Requests</h2>
-      <Table
-        headers={['Model', 'Tokens', 'Pattern', 'Score', 'Time']}
-        rows={(data.recent_logs || []).map((log: any) => [
-          log.model,
-          log.total_tokens,
-          log.detected_pattern || '-',
-          log.efficiency_score,
-          new Date(log.created_at).toLocaleString(),
-        ])}
-      />
-    </div>
   )
 }
 
@@ -198,36 +185,3 @@ function SessionsPage() {
   )
 }
 
-function StatCard({ label, value }: { label: string; value: any }) {
-  return (
-    <div className="bg-tf-card border border-tf-border rounded-lg p-5">
-      <div className="text-xs font-medium text-tf-muted uppercase tracking-wide">{label}</div>
-      <div className="text-2xl font-semibold text-tf-text mt-2">{value ?? 0}</div>
-    </div>
-  )
-}
-
-function Table({ headers, rows }: { headers: string[]; rows: any[][] }) {
-  return (
-    <div className="bg-tf-card border border-tf-border rounded-lg overflow-hidden">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-tf-border">
-            {headers.map(h => (
-              <th key={h} className="text-left px-4 py-3 text-xs font-medium text-tf-muted uppercase tracking-wide">{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, i) => (
-            <tr key={i} className="border-b border-tf-border last:border-0 hover:bg-tf-border/30 transition-colors">
-              {row.map((cell, j) => (
-                <td key={j} className="px-4 py-3 text-tf-text">{cell}</td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}

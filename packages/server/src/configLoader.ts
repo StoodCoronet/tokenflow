@@ -49,5 +49,17 @@ function getDefaultConfig(): AppConfig {
     },
     LOG_LEVEL: 'info',
     PROXY_URL: '',
+    pricingSource: 'http://localhost:40010/pricing.json',
+    Pricing: {
+      'gpt-4o': { prompt: 5, completion: 15 },
+      'gpt-4o-mini': { prompt: 0.15, completion: 0.6 },
+      'claude-3-5-sonnet': { prompt: 3, completion: 15 },
+      'claude-3-5-sonnet-20241022': { prompt: 3, completion: 15 },
+      'claude-3-opus-20240229': { prompt: 15, completion: 75 },
+      'deepseek-chat': { prompt: 0.14, completion: 0.28 },
+      'deepseek-coder': { prompt: 0.14, completion: 0.28 },
+      'gemini-1.5-pro': { prompt: 1.25, completion: 5 },
+      'gemini-1.5-flash': { prompt: 0.075, completion: 0.3 },
+    },
   }
 }
