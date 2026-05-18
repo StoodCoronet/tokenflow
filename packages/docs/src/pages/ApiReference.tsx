@@ -48,23 +48,8 @@ export default function ApiReference() {
           desc="创建新的 API Key"
           body={{
             name: 'string (必填)',
-            provider: 'string — 上游 Provider 名称，默认 openai',
-            upstream_key: 'string (必填) — 上游 API Key',
-            base_url: 'string — 自定义上游地址',
-            scenario: 'string — 使用场景描述',
-          }}
-          response="ApiKey"
-        />
-        <Endpoint
-          method="PUT"
-          path="/api/keys/:id"
-          desc="更新 API Key"
-          body={{
-            name: 'string',
-            provider: 'string',
-            upstream_key: 'string',
-            base_url: 'string',
-            scenario: 'string',
+            provider: 'string — 上游 Provider 名称',
+            scenario: 'string — 使用场景描述（可选）',
           }}
           response="ApiKey"
         />
@@ -81,15 +66,40 @@ export default function ApiReference() {
         <h3 className="text-lg font-semibold text-tf-text border-b border-tf-border pb-2">Dashboard</h3>
         <Endpoint
           method="GET"
-          path="/api/dashboard"
-          desc="获取 Dashboard 统计数据"
+          path="/api/dashboard?range={range}"
+          desc="获取 Dashboard 统计数据。支持时间范围筛选。"
+          params={{
+            range: 'string — 时间范围：1h | 6h | 24h | 7d | 30d | all（默认 24h）',
+          }}
           response={{
             total_requests: 'number',
             total_tokens: 'number',
             avg_efficiency: 'number (0-100)',
-            recent_logs: 'RequestLog[] (最近 50 条)',
-            sessions: 'Session[] (最近 20 条)',
+            key_distribution: 'array — 各 Key 用量分布',
+            key_trends: 'array — 各 Key 时间趋势',
+            model_distribution: 'array — 各模型用量分布',
+            trend: 'array — 全局时间趋势',
           }}
+        />
+        <Endpoint
+          method="GET"
+          path="/api/dashboard/keys/:key_id?range={range}"
+          desc="获取单个 Key 的 Dashboard 详情"
+          params={{
+            range: 'string — 同上',
+          }}
+          response="KeyDashboard"
+        />
+      </section>
+
+      {/* Provider Models */}
+      <section className="space-y-3">
+        <h3 className="text-lg font-semibold text-tf-text border-b border-tf-border pb-2">Provider Models</h3>
+        <Endpoint
+          method="GET"
+          path="/api/provider-models/:name"
+          desc="从上游 Provider 拉取可用模型列表并缓存"
+          response='{ models: string[], fetched_at: string }'
         />
       </section>
 
@@ -119,38 +129,12 @@ export default function ApiReference() {
         />
         <Endpoint
           method="GET"
-          path="/api/sessions/stats"
-          desc="获取 Session 统计概览"
-          response={{
-            total_sessions: 'number',
-            active_sessions: 'number',
-            total_tokens: 'number',
-            avg_efficiency: 'number',
-            pattern_distribution: '{ pattern: string, count: number }[]',
-          }}
-        />
-        <Endpoint
-          method="GET"
           path="/api/sessions/:id"
           desc="获取 Session 详情，包含请求日志和最近消息"
           response={{
             session: 'Session',
             logs: 'RequestLog[]',
             recent_messages: '{ role: string, content: string }[]',
-          }}
-        />
-      </section>
-
-      {/* Analysis */}
-      <section className="space-y-3">
-        <h3 className="text-lg font-semibold text-tf-text border-b border-tf-border pb-2">Analysis</h3>
-        <Endpoint
-          method="GET"
-          path="/api/analysis/:session_id"
-          desc="获取 Session 的分析数据"
-          response={{
-            session_id: 'string',
-            logs: '{ efficiency_score: number, detected_pattern: string, created_at: string }[]',
           }}
         />
       </section>
@@ -168,7 +152,7 @@ export default function ApiReference() {
           method="PUT"
           path="/api/config"
           desc="更新配置并写入 config.json5"
-          body="Partial<AppConfig"
+          body="Partial<AppConfig>"
           response='{ "ok": true, "config": AppConfig }'
         />
       </section>

@@ -11,9 +11,6 @@ export default function ConfigReference() {
   // 服务端口
   PORT: 40001,
 
-  // Web UI 端口
-  UI_PORT: 40002,
-
   // 管理员密钥（用于 API 管理接口认证）
   APIKEY: "your-admin-key",
 
@@ -23,11 +20,14 @@ export default function ConfigReference() {
   // 上游 Provider 列表
   Providers: [ ... ],
 
-  // 智能路由配置
-  Router: { ... },
-
   // 检测器配置
   Detectors: { ... },
+
+  // 模型单价表
+  Pricing: { ... },
+
+  // 远程价格源
+  pricingSource: "",
 
   // 日志级别
   LOG_LEVEL: "info"
@@ -40,12 +40,6 @@ export default function ConfigReference() {
           type="number"
           default="40001"
           desc="代理服务监听端口。应用将请求发送到此端口的 /v1/* 路径。"
-        />
-        <Field
-          name="UI_PORT"
-          type="number"
-          default="40002"
-          desc="Web UI 开发服务器端口。生产环境通过 tflow ui 打开。"
         />
         <Field
           name="APIKEY"
@@ -65,6 +59,18 @@ export default function ConfigReference() {
           default='"info"'
           desc='日志级别：debug | info | warn | error'
         />
+        <Field
+          name="Pricing"
+          type="Record<string, ModelPricing>"
+          default='{}'
+          desc='模型单价表。键为模型名，值为 { prompt: number, completion: number }（单位：$ / 1M tokens）。'
+        />
+        <Field
+          name="pricingSource"
+          type="string"
+          default='""'
+          desc='远程价格源 URL。设置后可通过 tflow pricing --update 从该地址拉取并合并价格。'
+        />
       </section>
 
       <section className="space-y-4">
@@ -74,42 +80,22 @@ export default function ConfigReference() {
         </p>
         <pre><code>{`Providers: [
   {
-    name: "openai",                    // 唯一标识
-    api_base_url: "https://api.openai.com",  // API 地址
-    api_key: "sk-xxx",                 // 上游 API Key
-    models: ["gpt-4o", "gpt-4o-mini"] // 支持的模型列表
-  },
-  {
-    name: "anthropic",
-    api_base_url: "https://api.anthropic.com",
-    api_key: "sk-ant-xxx",
-    models: ["claude-sonnet-4-20250514"]
+    name: "openai",                          // 唯一标识
+    template: "openai",                      // 转换器模板
+    api_base_url: "https://api.openai.com/v1",  // API 地址
+    api_key: "sk-xxx",                       // 上游 API Key
+    models: ["gpt-4o", "gpt-4o-mini"],      // 支持的模型列表（可选，空则表示全部）
+    options: {                               // 额外选项（可选）
+      extra_headers: { "X-Custom": "value" }
+    }
   }
 ]`}</code></pre>
-        <Field name="name" type="string" desc="Provider 唯一标识，用于 API Key 绑定和路由配置" />
-        <Field name="api_base_url" type="string" desc="上游 API 地址。不含 /v1 路径，系统会自动拼接" />
+        <Field name="name" type="string" desc="Provider 唯一标识，用于 Key 绑定和显示" />
+        <Field name="template" type="string" desc="转换器模板，决定请求/响应格式转换方式。可选：openai、anthropic、openai-responses、gemini、deepseek、openrouter、groq、cerebras、vercel、vertex-gemini、vertex-claude" />
+        <Field name="api_base_url" type="string" desc="上游 API 地址。需包含版本路径（如 /v1）" />
         <Field name="api_key" type="string" desc="上游 API Key。在 Web UI 中会被脱敏显示" />
-        <Field name="models" type="string[]" desc="该 Provider 支持的模型列表" />
-      </section>
-
-      <section className="space-y-4">
-        <h3 className="text-lg font-semibold text-tf-text border-b border-tf-border pb-2">Router</h3>
-        <p className="text-sm text-tf-muted">
-          智能路由配置。开启后可按规则自动选择 Provider 和模型。
-        </p>
-        <pre><code>{`Router: {
-  enabled: false,
-  default: "openai,gpt-4o",   // "provider,model"
-  longContext: {
-    provider: "anthropic",
-    model: "claude-sonnet-4-20250514",
-    threshold: 80000           // token 阈值
-  }
-}`}</code></pre>
-        <Field name="enabled" type="boolean" default="false" desc="是否启用智能路由" />
-        <Field name="default" type="string" desc='默认路由，格式为 "provider,model"' />
-        <Field name="longContext" type="object" desc="长上下文自动切换配置" />
-        <Field name="longContext.threshold" type="number" desc="超过此 token 数量时自动切换到长上下文模型" />
+        <Field name="models" type="string[]" desc="该 Provider 支持的模型列表。留空表示允许所有模型" />
+        <Field name="options" type="object" desc="额外选项。当前支持 extra_headers：发送给上游的自定义 HTTP 头" />
       </section>
 
       <section className="space-y-4">

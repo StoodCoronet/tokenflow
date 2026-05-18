@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 export default function QuickStart() {
   return (
     <div className="space-y-8">
@@ -5,45 +7,40 @@ export default function QuickStart() {
 
       <section className="space-y-3">
         <h3 className="text-lg font-semibold text-tf-text">安装</h3>
-        <pre><code>{`# 克隆仓库
-git clone https://github.com/your-org/token-flow.git
+        <CodeBlock code={`git clone https://github.com/your-org/token-flow.git
 cd token-flow
 
-# 安装依赖
 pnpm install
 
-# 构建所有包
-pnpm build`}</code></pre>
+pnpm build`} />
       </section>
 
       <section className="space-y-3">
         <h3 className="text-lg font-semibold text-tf-text">首次配置</h3>
         <p className="text-tf-muted leading-relaxed">
-          使用 <code>tflow config</code> 进入交互式配置界面，或手动编辑配置文件。
+          使用 <code>tflow config</code> 进入交互式配置界面：
         </p>
-        <pre><code>{`# 交互式配置（TUI，推荐）
-tflow config
+        <CodeBlock code="tflow config" />
 
-# 或手动创建配置文件
-mkdir -p ~/.tokenflow
+        <p className="text-tf-muted leading-relaxed">
+          或手动创建配置文件：
+        </p>
+        <CodeBlock code={`mkdir -p ~/.tokenflow
+
 cat > ~/.tokenflow/config.json5 << 'EOF'
 {
   PORT: 40001,
-  UI_PORT: 40002,
   APIKEY: "your-admin-key",
   DATABASE: "~/.tokenflow/tokenflow.db",
   Providers: [
     {
       name: "openai",
-      api_base_url: "https://api.openai.com",
+      template: "openai",
+      api_base_url: "https://api.openai.com/v1",
       api_key: "sk-xxx",
       models: ["gpt-4o", "gpt-4o-mini"]
     }
   ],
-  Router: {
-    enabled: false,
-    default: "openai,gpt-4o"
-  },
   Detectors: {
     full_context: { enabled: true },
     sliding_window: { enabled: true },
@@ -51,7 +48,7 @@ cat > ~/.tokenflow/config.json5 << 'EOF'
   },
   LOG_LEVEL: "info"
 }
-EOF`}</code></pre>
+EOF`} />
       </section>
 
       <section className="space-y-3">
@@ -59,11 +56,11 @@ EOF`}</code></pre>
         <p className="text-tf-muted leading-relaxed">
           运行 <code>tflow config</code> 进入全屏终端配置界面。无需浏览器，纯键盘操作即可完成所有配置。
         </p>
-        <pre><code>{`# 启动 TUI
+        <CodeBlock code={`# 开发模式
 pnpm --filter @tokenflow/cli tui
 
-# 或在构建后直接使用
-tflow config`}</code></pre>
+# 构建后直接使用
+tflow config`} />
         <p className="text-tf-muted leading-relaxed">
           常用快捷键：
         </p>
@@ -71,7 +68,7 @@ tflow config`}</code></pre>
           <li><code>↑↓</code> — 侧边栏切换菜单项，页面内切换字段</li>
           <li><code>→ / Enter</code> — 进入当前页面（从预览切换到编辑模式）</li>
           <li><code>←</code> — 返回侧边栏（从编辑模式切回预览）</li>
-          <li><code>w</code> — 保存当前页面修改（Provider Edit / Ports / Router / General 均支持）</li>
+          <li><code>w</code> — 保存当前页面修改（Provider Edit / Ports / General 均支持）</li>
           <li><code>q</code> — 退出 TUI</li>
         </ul>
         <p className="text-tf-muted leading-relaxed mt-2">
@@ -80,17 +77,16 @@ tflow config`}</code></pre>
         <ul className="list-disc list-inside text-tf-muted space-y-1 ml-2">
           <li><strong>Overview</strong> — 查看当前配置概览</li>
           <li><strong>Providers</strong> — 添加 / 编辑 / 删除上游 Provider</li>
-          <li><strong>Ports</strong> — 设置代理和 Web UI 端口</li>
-          <li><strong>Router</strong> — 开关智能路由，设置默认 Provider</li>
+          <li><strong>Ports</strong> — 设置代理端口</li>
           <li><strong>Detectors</strong> — 启用或禁用上下文检测器</li>
-          <li><strong>General</strong> — 修改日志级别和数据库路径</li>
+          <li><strong>General</strong> — 修改日志级别、数据库路径、定价源</li>
           <li><strong>Config</strong> — 在 vim / nano 中直接编辑原始配置文件</li>
         </ul>
       </section>
 
       <section className="space-y-3">
         <h3 className="text-lg font-semibold text-tf-text">启动服务</h3>
-        <pre><code>{`# 启动代理服务
+        <CodeBlock code={`# 启动代理服务
 tflow start
 
 # 查看状态
@@ -100,17 +96,16 @@ tflow status
 tflow ui
 
 # 停止服务
-tflow stop`}</code></pre>
+tflow stop`} />
       </section>
 
       <section className="space-y-3">
         <h3 className="text-lg font-semibold text-tf-text">第一个代理请求</h3>
         <p className="text-tf-muted leading-relaxed">
-          服务启动后，在 Keys 页面创建一个 API Key。使用生成的 key 作为认证，
-          将请求发送到 Token Flow 的代理端点。
+          服务启动后，在 Providers 页面创建 Provider，然后点击「+ Add Key」生成 API Key。
+          使用生成的 key 作为认证，将请求发送到 Token Flow 的代理端点。
         </p>
-        <pre><code>{`# 将你的应用配置指向 Token Flow
-curl http://localhost:40001/v1/chat/completions \\
+        <CodeBlock code={`curl http://localhost:40001/v1/chat/completions \\
   -H "Content-Type: application/json" \\
   -H "X-API-Key: your-generated-key" \\
   -d '{
@@ -118,10 +113,9 @@ curl http://localhost:40001/v1/chat/completions \\
     "messages": [
       {"role": "user", "content": "Hello!"}
     ]
-  }'`}</code></pre>
+  }'`} />
         <p className="text-tf-muted leading-relaxed">
-          请求会被转发到你配置的上游 Provider，同时 Token Flow 会记录 token 使用情况
-          并运行上下文检测分析。
+          请求会被转发到你配置的上游 Provider，同时 Token Flow 会记录 token 使用情况和预估成本。
         </p>
       </section>
 
@@ -130,18 +124,56 @@ curl http://localhost:40001/v1/chat/completions \\
         <p className="text-tf-muted leading-relaxed">
           只需将 OpenAI SDK 的 <code>baseURL</code> 指向 Token Flow，并设置 API Key。
         </p>
-        <pre><code>{`import OpenAI from 'openai'
+        <CodeBlock code={`import OpenAI from 'openai'
 
 const client = new OpenAI({
-  apiKey: 'your-generated-key',   // Token Flow 生成的 key
-  baseURL: 'http://localhost:40001/v1',  // Token Flow 端点
+  apiKey: 'your-generated-key',
+  baseURL: 'http://localhost:40001/v1',
 })
 
 const response = await client.chat.completions.create({
   model: 'gpt-4o',
   messages: [{ role: 'user', content: 'Hello!' }],
-})`}</code></pre>
+})`} />
       </section>
+    </div>
+  )
+}
+
+function CodeBlock({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(code)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // Fallback
+      const textarea = document.createElement('textarea')
+      textarea.value = code
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    }
+  }
+
+  return (
+    <div className="relative group">
+      <button
+        onClick={handleCopy}
+        className="absolute top-2 right-2 z-10 text-[11px] px-2 py-1 rounded border border-tf-border bg-tf-bg text-tf-muted hover:text-tf-accent hover:border-tf-accent/50 transition-colors opacity-0 group-hover:opacity-100"
+      >
+        {copied ? '已复制' : '复制'}
+      </button>
+      <pre className="bg-tf-card border border-tf-border rounded-lg p-4 overflow-x-auto text-sm text-tf-text">
+        <code>{code}</code>
+      </pre>
     </div>
   )
 }

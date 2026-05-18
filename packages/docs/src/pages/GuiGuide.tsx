@@ -9,28 +9,17 @@ export default function GuiGuide() {
       </p>
 
       <section className="space-y-3">
-        <h3 className="text-lg font-semibold text-tf-text">Dashboard — 数据看板</h3>
+        <h3 className="text-lg font-semibold text-tf-text">Providers — Provider 与 Key 管理</h3>
         <p className="text-tf-muted leading-relaxed">
-          首页展示全局流量概览，所有数据实时刷新。
+          统一管理所有上游 Provider 及其生成的 API Key。点击 Provider 卡片可展开详情，查看 Key 列表和使用示例。
         </p>
         <ul className="list-disc list-inside text-tf-muted space-y-1 ml-2">
-          <li><strong>总请求量</strong> — 累计处理的 API 请求次数</li>
-          <li><strong>总 Token 消耗</strong> — 所有请求的 input + output token 总和</li>
-          <li><strong>平均效率</strong> — 上下文利用率评分（0-100）</li>
-          <li><strong>最近请求日志</strong> — 最近 20 条请求的简要信息</li>
-        </ul>
-      </section>
-
-      <section className="space-y-3">
-        <h3 className="text-lg font-semibold text-tf-text">Keys — API Key 管理</h3>
-        <p className="text-tf-muted leading-relaxed">
-          管理接入 Token Flow 的 API Key。每个 Key 可绑定特定的 Provider 和模型。
-        </p>
-        <ul className="list-disc list-inside text-tf-muted space-y-1 ml-2">
-          <li><strong>创建 Key</strong> — 点击「新建」按钮，填写名称、选择 Provider、设置限流</li>
-          <li><strong>编辑 Key</strong> — 点击行内编辑图标，可修改名称、绑定 Provider、启用/禁用</li>
-          <li><strong>删除 Key</strong> — 点击删除图标，确认后永久移除</li>
-          <li><strong>复制 Key</strong> — 点击复制图标将 Key 复制到剪贴板，用于应用集成</li>
+          <li><strong>Provider 卡片</strong> — 展示名称、模板、Base URL、Key 数量、token 用量趋势图和预估成本</li>
+          <li><strong>创建 Provider</strong> — 点击「Add Provider」，填写名称、选择模板（11 种）、Base URL、API Key</li>
+          <li><strong>模型获取</strong> — 编辑 Provider 时点击 🔄 Fetch 自动从上游拉取可用模型列表</li>
+          <li><strong>添加 Key</strong> — 在 Provider 详情中点击「+ Add Key」生成接入 Key，可设置场景标签</li>
+          <li><strong>复制 Key</strong> — 点击 Copy 按钮复制完整 Key ID 到剪贴板</li>
+          <li><strong>使用示例</strong> — 每个 Provider 详情底部提供 cURL / Python / TypeScript 调用示例</li>
         </ul>
       </section>
 
@@ -48,15 +37,17 @@ export default function GuiGuide() {
       </section>
 
       <section className="space-y-3">
-        <h3 className="text-lg font-semibold text-tf-text">Analysis — 检测报告</h3>
+        <h3 className="text-lg font-semibold text-tf-text">Analysis — 数据看板</h3>
         <p className="text-tf-muted leading-relaxed">
-          会话粒度的深度检测报告，帮助优化 token 使用效率。
+          全局流量分析看板，支持多时间范围切换和 Key 维度下钻。
         </p>
         <ul className="list-disc list-inside text-tf-muted space-y-1 ml-2">
-          <li><strong>效率评分</strong> — 基于上下文复用率计算的 0-100 分评分</li>
-          <li><strong>优化建议</strong> — 针对该会话的具体改进建议（如启用滑动窗口、调整模型）</li>
-          <li><strong>Token 趋势图</strong> — 折线图展示会话内逐条请求的 token 变化</li>
-          <li><strong>检测详情</strong> — 每个 Detector 的命中情况和详细数据</li>
+          <li><strong>Overview</strong> — 总请求量、总 Token、平均效率、预估成本等概览卡片</li>
+          <li><strong>Token Usage Trend</strong> — 时间趋势图，支持按 Key 拆分查看，可点击 legend 隐藏/显示特定 Key</li>
+          <li><strong>Usage by Key</strong> — 各 Key 的 token 消耗横向柱状图</li>
+          <li><strong>Usage by Model</strong> — 各模型的 token 消耗饼图</li>
+          <li><strong>Key Detail</strong> — 点击 Key 行查看该 Key 的详细趋势和分布</li>
+          <li><strong>时间范围</strong> — 支持 1h / 6h / 24h / 7d / 30d / all 六档切换</li>
         </ul>
       </section>
 
@@ -66,10 +57,11 @@ export default function GuiGuide() {
           图形化界面修改所有配置项，改动即时保存到 <code>~/.tokenflow/config.json5</code>。
         </p>
         <ul className="list-disc list-inside text-tf-muted space-y-1 ml-2">
-          <li><strong>Providers</strong> — 添加、编辑、删除上游 Provider（名称、Base URL、API Key、模型列表）</li>
-          <li><strong>Router</strong> — 启用/禁用智能路由，设置默认 Provider 和长上下文阈值</li>
+          <li><strong>Providers</strong> — 添加、编辑、删除上游 Provider（名称、模板、Base URL、API Key、模型列表、Extra Headers）</li>
           <li><strong>Detectors</strong> — 开关各个上下文检测器</li>
+          <li><strong>Proxy</strong> — 配置代理地址（可选）</li>
           <li><strong>General</strong> — 修改服务端口、日志级别、数据库路径</li>
+          <li><strong>Pricing</strong> — 查看和编辑模型单价表，配置远程价格源 pricingSource</li>
         </ul>
       </section>
     </div>

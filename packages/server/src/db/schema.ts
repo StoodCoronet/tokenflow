@@ -64,6 +64,19 @@ function migrate(db: Database.Database): void {
     `)
   }
 
+  // Migrate: add estimated_cost to request_logs if missing
+  const hasRequestLogs = db.prepare(
+    `SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'request_logs'`
+  ).get()
+  if (hasRequestLogs) {
+    const hasEstimatedCost = db.prepare(
+      `SELECT 1 FROM pragma_table_info('request_logs') WHERE name = 'estimated_cost'`
+    ).get()
+    if (!hasEstimatedCost) {
+      db.exec(`ALTER TABLE request_logs ADD COLUMN estimated_cost REAL DEFAULT 0`)
+    }
+  }
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS request_logs (
       id TEXT PRIMARY KEY,

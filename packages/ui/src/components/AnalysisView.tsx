@@ -165,22 +165,31 @@ function TimeRangeSelector({ range, onChange }: { range: TimeRange; onChange: (r
 
 function OverviewCards({ data }: { data: any }) {
   if (!data) return null
+  const totalTokens = (data.total_prompt_tokens ?? 0) + (data.total_completion_tokens ?? 0)
   return (
-    <div className="grid grid-cols-5 gap-4">
+    <div className="grid grid-cols-4 gap-4">
       <Card label="Total Requests" value={data.total_requests?.toLocaleString() ?? '—'} />
-      <Card label="Prompt Tokens" value={data.total_prompt_tokens != null ? formatTokens(data.total_prompt_tokens) : '—'} />
-      <Card label="Completion Tokens" value={data.total_completion_tokens != null ? formatTokens(data.total_completion_tokens) : '—'} />
+      <Card
+        label="Total Tokens"
+        value={totalTokens > 0 ? formatTokens(totalTokens) : '—'}
+        sub={
+          data.total_prompt_tokens != null && data.total_completion_tokens != null
+            ? `(${formatTokens(data.total_prompt_tokens)} in / ${formatTokens(data.total_completion_tokens)} out)`
+            : undefined
+        }
+      />
       <Card label="Avg Efficiency" value={`${data.avg_efficiency ?? '—'}/100`} />
       <Card label="Est. Cost" value={data.total_cost != null ? `$${data.total_cost.toFixed(2)}` : '—'} />
     </div>
   )
 }
 
-function Card({ label, value }: { label: string; value: string }) {
+function Card({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div className="bg-tf-card border border-tf-border rounded-lg p-4 text-center">
       <div className="text-xs text-tf-muted uppercase tracking-wide mb-1">{label}</div>
       <div className="text-2xl font-semibold text-tf-text">{value}</div>
+      {sub && <div className="text-[11px] text-tf-muted mt-0.5">{sub}</div>}
     </div>
   )
 }

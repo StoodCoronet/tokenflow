@@ -6,7 +6,7 @@ export default function Features() {
       <section className="space-y-3">
         <h3 className="text-lg font-semibold text-tf-text">API 代理</h3>
         <p className="text-tf-muted leading-relaxed">
-          Token Flow 作为透明代理，将请求转发到你配置的上游 Provider（OpenAI、Anthropic 等）。
+          Token Flow 作为透明代理，将请求转发到你配置的上游 Provider（OpenAI、Anthropic、DeepSeek 等）。
           你的应用只需指向 Token Flow 的端点，无需修改请求格式。
         </p>
         <div className="grid grid-cols-2 gap-4 mt-4">
@@ -16,21 +16,17 @@ export default function Features() {
           />
           <FeatureCard
             title="Key 管理"
-            desc="导入外部 Key，生成统一接入点，支持创建、编辑、删除"
+            desc="生成统一接入 Key，支持创建、编辑、删除，Key 与 Provider 解耦"
           />
         </div>
       </section>
 
       <section className="space-y-3">
-        <h3 className="text-lg font-semibold text-tf-text">智能路由</h3>
+        <h3 className="text-lg font-semibold text-tf-text">格式转换</h3>
         <p className="text-tf-muted leading-relaxed">
-          根据请求特征自动选择最优的 Provider 和模型。支持默认路由和长上下文自动切换。
+          客户端统一使用 OpenAI 格式，Token Flow 自动转换为上游 Provider 所需格式。
+          支持 11 个 Provider 模板：openai、anthropic、gemini、deepseek、openrouter、groq、cerebras、vercel、vertex-gemini、vertex-claude、openai-responses。
         </p>
-        <ul className="list-disc list-inside text-tf-muted space-y-1 ml-2">
-          <li>默认路由：指定 Provider + 模型组合</li>
-          <li>长上下文路由：当 token 数量超过阈值时自动切换到支持长上下文的模型</li>
-          <li>可按 Key 独立配置</li>
-        </ul>
       </section>
 
       <section className="space-y-3">
@@ -46,6 +42,19 @@ export default function Features() {
       </section>
 
       <section className="space-y-3">
+        <h3 className="text-lg font-semibold text-tf-text">Token 计费</h3>
+        <p className="text-tf-muted leading-relaxed">
+          按模型单价实时计算每次请求的预估成本，支持自定义价格表和远程价格源同步。
+        </p>
+        <ul className="list-disc list-inside text-tf-muted space-y-1 ml-2">
+          <li>默认价格表覆盖主流模型（gpt-4o、claude-3-5-sonnet、deepseek-chat 等）</li>
+          <li>Settings UI 支持查看、编辑、删除模型单价</li>
+          <li>CLI <code>tflow pricing list</code> 查看本地价格，<code>tflow pricing --update</code> 从远程源同步</li>
+          <li>支持 Token Flow 原生格式和 OpenRouter 格式自动识别</li>
+        </ul>
+      </section>
+
+      <section className="space-y-3">
         <h3 className="text-lg font-semibold text-tf-text">交互界面</h3>
         <p className="text-tf-muted leading-relaxed">
           Token Flow 提供两种配置管理方式：浏览器中的 Web Dashboard（GUI）和终端中的 TUI。
@@ -58,7 +67,7 @@ export default function Features() {
               浏览器可视化控制台，适合需要图表分析、鼠标操作的场景。
             </p>
             <p className="text-xs text-tf-muted">
-              含 Dashboard、Keys、Sessions、Analysis、Settings 五个页面。
+              含 Providers、Sessions、Analysis、Settings 四个页面。
             </p>
           </div>
           <div className="border border-tf-border rounded-lg p-4 bg-tf-card">
@@ -67,7 +76,7 @@ export default function Features() {
               全屏终端交互界面，无需浏览器，纯键盘操作，适合 SSH 远程或快速修改配置。
             </p>
             <p className="text-xs text-tf-muted">
-              含 Overview、Providers、Ports、Router、Detectors、General、Config 七个页面。
+              含 Overview、Providers、Ports、Detectors、General、Config 等页面。
             </p>
           </div>
         </div>
@@ -83,7 +92,9 @@ tflow stop        # 停止服务
 tflow restart     # 重启服务
 tflow status      # 查看运行状态
 tflow ui          # 打开 Web UI
-tflow config      # 交互式配置（TUI）`}</code></pre>
+tflow config      # 交互式配置（TUI）
+tflow pricing list     # 查看本地模型单价
+tflow pricing --update # 从远程 pricingSource 同步价格`}</code></pre>
       </section>
     </div>
   )

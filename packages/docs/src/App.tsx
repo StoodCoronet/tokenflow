@@ -6,8 +6,9 @@ import GuiGuide from './pages/GuiGuide'
 import TuiGuide from './pages/TuiGuide'
 import ApiReference from './pages/ApiReference'
 import ConfigReference from './pages/ConfigReference'
+import TechnicalDoc from './pages/TechnicalDoc'
 
-type Page = 'quickstart' | 'features' | 'gui' | 'tui' | 'api' | 'config'
+type Page = 'quickstart' | 'features' | 'gui' | 'tui' | 'api' | 'config' | 'technical'
 
 const pages: Record<Page, { title: string; component: () => JSX.Element }> = {
   quickstart: { title: '快速开始', component: QuickStart },
@@ -16,6 +17,7 @@ const pages: Record<Page, { title: string; component: () => JSX.Element }> = {
   tui: { title: 'TUI 使用指南', component: TuiGuide },
   api: { title: 'API 参考', component: ApiReference },
   config: { title: '配置参考', component: ConfigReference },
+  technical: { title: '技术文档', component: TechnicalDoc },
 }
 
 export default function App() {

@@ -26,13 +26,11 @@ tflow config`}</code></pre>
         <pre><code>{` Token Flow Config────────────────────────────────────────
 ┌──────────────┐  Providers: 2
 │   Overview   │  Server Port: 40001
-│ › Providers  │  UI Port: 40002
-│   Ports      │  Router: OFF
-│   Router     │  Log Level: info
-│   Detectors  │
-│   General    │  ── openai ──
-│   Config     │  Base URL: https://api.openai.com
-│              │  API Key: sk-xxxx***
+│ › Providers  │  Log Level: info
+│   Ports      │
+│   Detectors  │  ── openai ──
+│   General    │  Base URL: https://api.openai.com/v1
+│   Config     │  API Key: sk-xxxx***
 │              │  Models: gpt-4o, gpt-4o-mini
 │              │
 │  q quit      │  ↑↓ select │ → edit/add │ ← back
@@ -55,7 +53,7 @@ tflow config`}</code></pre>
               <tr className="border-t border-tf-border/50"><td className="px-4 py-2 font-mono">↑ ↓</td><td className="px-4 py-2">切换菜单项 / 切换字段</td><td className="px-4 py-2">侧边栏 / 页面内</td></tr>
               <tr className="border-t border-tf-border/50"><td className="px-4 py-2 font-mono">→ / Enter</td><td className="px-4 py-2">进入当前页面（从预览切换到编辑模式）</td><td className="px-4 py-2">侧边栏选中时</td></tr>
               <tr className="border-t border-tf-border/50"><td className="px-4 py-2 font-mono">←</td><td className="px-4 py-2">返回侧边栏（从编辑模式切回预览）</td><td className="px-4 py-2">页面内</td></tr>
-              <tr className="border-t border-tf-border/50"><td className="px-4 py-2 font-mono">w</td><td className="px-4 py-2">保存当前页面修改</td><td className="px-4 py-2">Provider Edit / Ports / Router / General</td></tr>
+              <tr className="border-t border-tf-border/50"><td className="px-4 py-2 font-mono">w</td><td className="px-4 py-2">保存当前页面修改</td><td className="px-4 py-2">Provider Edit / Ports / General</td></tr>
               <tr className="border-t border-tf-border/50"><td className="px-4 py-2 font-mono">q</td><td className="px-4 py-2">退出 TUI</td><td className="px-4 py-2">侧边栏模式</td></tr>
             </tbody>
           </table>
@@ -77,7 +75,7 @@ tflow config`}</code></pre>
           <div className="border border-tf-border rounded-lg p-4 bg-tf-card">
             <h4 className="text-sm font-semibold text-tf-text mb-1">Overview — 配置概览</h4>
             <p className="text-xs text-tf-muted">
-              只读页面，展示当前配置的快照：Provider 数量、Server Port、UI Port、Router 开关状态、Log Level。
+              只读页面，展示当前配置的快照：Provider 数量、Server Port、Log Level。
               适合快速确认系统当前配置。
             </p>
           </div>
@@ -86,7 +84,7 @@ tflow config`}</code></pre>
             <h4 className="text-sm font-semibold text-tf-text mb-1">Providers — 上游 Provider 管理</h4>
             <p className="text-xs text-tf-muted">
               列表展示所有 Provider，↑↓ 选择后右侧显示详情（Base URL、脱敏 API Key、模型列表）。
-              按 → 进入 Provider 的编辑表单，可修改名称、Base URL、API Key、模型（逗号分隔）。
+              按 → 进入 Provider 的编辑表单，可修改名称、模板、Base URL、API Key、模型（逗号分隔）。
               列表最后一行是「+ Add new provider」，选中后按 → 添加新 Provider。
             </p>
           </div>
@@ -94,16 +92,8 @@ tflow config`}</code></pre>
           <div className="border border-tf-border rounded-lg p-4 bg-tf-card">
             <h4 className="text-sm font-semibold text-tf-text mb-1">Ports — 端口设置</h4>
             <p className="text-xs text-tf-muted">
-              两个可编辑字段：PORT（代理服务端口）和 UI_PORT（Web UI 端口）。
+              可编辑字段：PORT（代理服务端口）。
               ↑↓ 切换字段，直接输入数字，Enter 下一个，在最后一个字段按 Enter 或按 w 保存。
-            </p>
-          </div>
-
-          <div className="border border-tf-border rounded-lg p-4 bg-tf-card">
-            <h4 className="text-sm font-semibold text-tf-text mb-1">Router — 智能路由</h4>
-            <p className="text-xs text-tf-muted">
-              两个字段：Enabled（开关，Enter 切换 ON/OFF）和 Default（默认 Provider+模型，可输入）。
-              ↑↓ 切换字段，Enter 在 Enabled 上切换开关、在 Default 上保存。w 也可保存。
             </p>
           </div>
 
@@ -118,7 +108,7 @@ tflow config`}</code></pre>
           <div className="border border-tf-border rounded-lg p-4 bg-tf-card">
             <h4 className="text-sm font-semibold text-tf-text mb-1">General — 通用设置</h4>
             <p className="text-xs text-tf-muted">
-              两个字段：LOG_LEVEL（日志级别）和 DATABASE（SQLite 数据库路径）。
+              字段：LOG_LEVEL（日志级别）、DATABASE（SQLite 数据库路径）、pricingSource（远程价格源 URL）。
               编辑方式同 Ports 页面。
             </p>
           </div>

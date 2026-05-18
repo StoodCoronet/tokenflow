@@ -6,6 +6,7 @@ import { getMainTransformer, getProviderTransformer } from '../transformers/inde
 import type { TransformContext } from '../transformers/base.js'
 import { loadConfig } from '../configLoader.js'
 import { ProxyAgent } from 'undici'
+import { computeCost } from './pricing.js'
 
 export async function proxyHandler(request: FastifyRequest, reply: FastifyReply) {
   const body = request.body as any
@@ -153,12 +154,7 @@ function extractUsage(raw: any): { prompt_tokens: number; completion_tokens: num
   return { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
 }
 
-function computeCost(model: string, promptTokens: number, completionTokens: number): number {
-  const config = loadConfig()
-  const pricing = config.Pricing?.[model]
-  if (!pricing) return 0
-  return (promptTokens * pricing.prompt + completionTokens * pricing.completion) / 1_000_000
-}
+// computeCost imported from ./pricing.js
 
 function logRequest(
   apiKeyId: string,

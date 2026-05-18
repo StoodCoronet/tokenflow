@@ -134,10 +134,10 @@ function parseArgs(): SimConfig {
   const availableCount = getAvailableProviders().length
 
   return {
-    totalRequests: parseInt(get('--requests', '500'), 10),
-    keyCount: parseInt(get('--keys', '6'), 10),
+    totalRequests: parseInt(get('--requests', '2000'), 10),
+    keyCount: parseInt(get('--keys', '10'), 10),
     providerCount: providerCount > 0 ? Math.min(providerCount, availableCount) : availableCount,
-    concurrency: parseInt(get('--concurrency', '5'), 10),
+    concurrency: parseInt(get('--concurrency', '10'), 10),
     streamRatio: parseFloat(get('--stream', '0.3')),
     days: parseInt(get('--days', '1'), 10),
     seed: parseInt(get('--seed', '42'), 10),
@@ -947,7 +947,7 @@ function printSummary(db: Database.Database, cfg: SimConfig, durationMs: number,
 
 // ── Live Simulation Personas ──
 
-type UserPersona = 'coding' | 'chat' | 'deepresearch'
+type UserPersona = 'coding' | 'chat' | 'deepresearch' | 'agent' | 'writer'
 
 interface PersonaConfig {
   name: string
@@ -1045,6 +1045,61 @@ const PERSONAS: Record<UserPersona, PersonaConfig> = {
     completionTokenMin: 300,
     completionTokenMax: 1200,
   },
+  agent: {
+    name: 'Agent',
+    delayMin: 500,
+    delayMax: 3000,
+    streamRatio: 0.9,
+    pattern: 'summarization',
+    queries: [
+      'Extract action items from this thread',
+      'Classify this ticket priority',
+      'Route this request to the right team',
+      'Summarize customer sentiment',
+      'Generate a follow-up email draft',
+      'Validate this form data',
+      'Check compliance against policy doc',
+      'Draft a JIRA description',
+      'Extract entities from this paragraph',
+      'Score this lead qualification',
+      'Generate SQL from this natural language query',
+      'Validate JSON schema against spec',
+    ],
+    systemPrompts: [
+      'You are an autonomous agent. Be extremely concise. Output structured data only.',
+      'You are a workflow automation bot. Respond with single-line decisions.',
+    ],
+    completionTokenMin: 20,
+    completionTokenMax: 150,
+  },
+  writer: {
+    name: 'Writer',
+    delayMin: 20000,
+    delayMax: 60000,
+    streamRatio: 0.6,
+    pattern: 'full_context',
+    queries: [
+      'Write a blog post about serverless architecture',
+      'Draft product release notes for v2.4',
+      'Create a tutorial on React Server Components',
+      'Write a comparison article: REST vs GraphQL',
+      'Generate a landing page copy for a DevTool',
+      'Draft a technical spec for caching layer',
+      'Write a newsletter issue about AI agents',
+      'Create documentation for this API endpoint',
+      'Draft a pitch deck narrative',
+      'Write a case study on migration to microservices',
+      'Generate social media threads from this blog',
+      'Draft a README for an open-source project',
+    ],
+    systemPrompts: [
+      'You are a technical writer. Use clear headings, bullet points, and code examples.',
+      'You are a content strategist. Write engaging, SEO-friendly copy.',
+      'You are a developer advocate. Balance technical depth with accessibility.',
+    ],
+    completionTokenMin: 400,
+    completionTokenMax: 2000,
+  },
 }
 
 // ── Live Simulation ──
@@ -1079,7 +1134,7 @@ async function runLiveSimulation(
   process.on('SIGTERM', shutdown)
 
   // Assign persona to each user
-  const personaTypes: UserPersona[] = ['coding', 'chat', 'deepresearch']
+  const personaTypes: UserPersona[] = ['coding', 'chat', 'deepresearch', 'agent', 'writer']
   const userPersonas = new Map<number, PersonaConfig>()
   const userSessions = new Map<number, string>()
   const userMessageHistory = new Map<number, Array<{ role: string; content: string }>>()

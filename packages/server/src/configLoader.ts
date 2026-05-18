@@ -35,7 +35,7 @@ export function saveConfig(config: AppConfig): void {
   try { chmodSync(configPath, 0o600) } catch {}
 }
 
-function getDefaultConfig(): AppConfig {
+export function getDefaultConfig(): AppConfig {
   return {
     PORT: DEFAULT_PORT,
     UI_PORT: DEFAULT_UI_PORT,
@@ -51,15 +51,21 @@ function getDefaultConfig(): AppConfig {
     PROXY_URL: '',
     pricingSource: 'http://localhost:40010/pricing.json',
     Pricing: {
-      'gpt-4o': { prompt: 5, completion: 15 },
+      'gpt-4o': { prompt: 2.5, completion: 10 },
       'gpt-4o-mini': { prompt: 0.15, completion: 0.6 },
       'claude-3-5-sonnet': { prompt: 3, completion: 15 },
       'claude-3-5-sonnet-20241022': { prompt: 3, completion: 15 },
       'claude-3-opus-20240229': { prompt: 15, completion: 75 },
+      'claude-3-haiku-20240307': { prompt: 0.25, completion: 1.25 },
       'deepseek-chat': { prompt: 0.14, completion: 0.28 },
       'deepseek-coder': { prompt: 0.14, completion: 0.28 },
       'gemini-1.5-pro': { prompt: 1.25, completion: 5 },
       'gemini-1.5-flash': { prompt: 0.075, completion: 0.3 },
+      'llama-3.1-70b-versatile': { prompt: 0.59, completion: 0.79 },
+      'llama3.1-70b': { prompt: 0.60, completion: 0.60 },
+      'llama3.1-8b': { prompt: 0.10, completion: 0.10 },
+      'mixtral-8x7b-32768': { prompt: 0.24, completion: 0.24 },
+      'gemma-7b-it': { prompt: 0.05, completion: 0.05 },
     },
   }
 }
