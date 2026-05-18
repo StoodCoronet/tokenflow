@@ -16,7 +16,7 @@
  *   --concurrency <n>  并发数 (默认: 5)
  *   --stream <ratio>   streaming 比例 0-1 (默认: 0.3)
  *   --days <n>         时间跨度天数 (默认: 1)
- *   --fast             快速模式：直接 INSERT 数据库，不走 HTTP
+ *   --db <path>        数据库路径（默认: :memory:，指定则写入主库）
  *   --seed <n>         随机种子 (默认: 42)
  *   --keep             运行结束后保持 server 不退出
  *   --port <n>         Token Flow server 端口 (默认: 随机)
@@ -33,7 +33,6 @@
  *   npx tsx tests/simulation/studio-sim.ts
  *
  *   # 快速生成 7 天历史数据
- *   npx tsx tests/simulation/studio-sim.ts --days 7 --requests 2000 --fast
  *
  *   # 高并发压力测试
  *   npx tsx tests/simulation/studio-sim.ts --requests 5000 --concurrency 50
@@ -49,15 +48,17 @@
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
-import { writeFileSync, mkdirSync, rmSync } from 'node:fs'
+import { writeFileSync, readFileSync, mkdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import Database from 'better-sqlite3'
+import JSON5 from 'json5'
 
 import { createApp } from '../../packages/server/src/app.js'
 import { resetDb, getDb, createApiKey } from '../../packages/server/src/db/schema.js'
 import { loadConfig } from '../../packages/server/src/configLoader.js'
 import { generateId } from '../../packages/shared/src/index.js'
+import { expandTilde } from '../../packages/shared/src/utils.js'
 
 // ── Types ──
 
@@ -68,7 +69,6 @@ interface SimConfig {
   concurrency: number
   streamRatio: number
   days: number
-  fast: boolean
   seed: number
   keep: boolean
   port: number
@@ -140,7 +140,6 @@ function parseArgs(): SimConfig {
     concurrency: parseInt(get('--concurrency', '5'), 10),
     streamRatio: parseFloat(get('--stream', '0.3')),
     days: parseInt(get('--days', '1'), 10),
-    fast: has('--fast'),
     seed: parseInt(get('--seed', '42'), 10),
     keep: has('--keep'),
     port: parseInt(get('--port', '0'), 10),
@@ -711,7 +710,7 @@ function executeFastInsert(
       const totalTokens = req.promptTokens + req.completionTokens
       const timeIso = req.time.toISOString()
 
-      // Simple pattern assignment for fast mode
+      // Pattern assignment for timestamp fix
       const pattern =
         req.messages.length > 25
           ? 'full_context'
@@ -899,7 +898,7 @@ function printSummary(db: Database.Database, cfg: SimConfig, durationMs: number,
   console.log('\n📊 Simulation Summary')
   console.log('====================')
   console.log(`  Duration:        ${(durationMs / 1000).toFixed(1)}s`)
-  console.log(`  Mode:            ${cfg.fast ? 'Fast (direct DB)' : 'HTTP (full proxy)'}`)
+  console.log(`  Mode:            HTTP (full proxy)`)
   console.log(`  Requests:        ${totalRequests}`)
   console.log(`  Sessions:        ${totalSessions}`)
   console.log(`  Keys:            ${totalKeys}`)
@@ -908,7 +907,7 @@ function printSummary(db: Database.Database, cfg: SimConfig, durationMs: number,
   console.log(`  Hour Windows:    ${hourWindows}`)
   console.log(`  Day Windows:     ${dayWindows}`)
 
-  if (metrics && !cfg.fast && metrics.total > 0) {
+  if (metrics && metrics.total > 0) {
     const rps = (metrics.total / (durationMs / 1000)).toFixed(1)
     const sorted = [...metrics.latencies].sort((a, b) => a - b)
     const avg = sorted.length > 0 ? (sorted.reduce((a, b) => a + b, 0) / sorted.length).toFixed(0) : '0'
@@ -1310,7 +1309,7 @@ async function main() {
   console.log(`  Concurrency:   ${cfg.concurrency}`)
   console.log(`  Stream ratio:  ${cfg.streamRatio}`)
   console.log(`  Days:          ${cfg.days}`)
-  console.log(`  Mode:          ${cfg.fast ? 'Fast (DB direct)' : 'HTTP (proxy)'}`)
+  console.log(`  Mode:          HTTP (full proxy)`)
   console.log(`  Load pattern:  ${cfg.loadPattern}`)
   console.log(`  Error rate:    ${(cfg.errorRate * 100).toFixed(1)}%`)
   console.log(`  Live mode:     ${cfg.live ? 'yes' : 'no'}`)
@@ -1412,19 +1411,15 @@ async function main() {
     metrics.total = requests.length
     metrics.success = requests.length
 
-    if (cfg.fast) {
-      executeFastInsert(requests, keyMap, db)
-    } else {
-      metrics = await executeHttpRequests(requests, tfPort, keyMap, cfg)
-      // After HTTP execution, fix timestamps and re-insert with correct data
-      // so that Dashboard time distribution matches the simulation.
-      // The proxy pipeline was already exercised during the HTTP calls.
-      console.log('   Fixing timestamps after HTTP execution...')
-      db.exec('DELETE FROM request_logs')
-      db.exec('DELETE FROM sessions')
-      db.exec('DELETE FROM stats_aggregates')
-      executeFastInsert(requests, keyMap, db)
-    }
+    metrics = await executeHttpRequests(requests, tfPort, keyMap, cfg)
+    // After HTTP execution, fix timestamps and re-insert with correct data
+    // so that Dashboard time distribution matches the simulation.
+    // The proxy pipeline was already exercised during the HTTP calls.
+    console.log('   Fixing timestamps after HTTP execution...')
+    db.exec('DELETE FROM request_logs')
+    db.exec('DELETE FROM sessions')
+    db.exec('DELETE FROM stats_aggregates')
+    executeFastInsert(requests, keyMap, db)
 
     // 7. Rebuild stats aggregates
     console.log('7. Rebuilding stats aggregates...')
@@ -1433,10 +1428,30 @@ async function main() {
 
   const duration = Date.now() - startTime
 
-  // 8. Print summary
+  // 8. Sync providers to user config (when writing to main DB)
+  if (cfg.dbPath) {
+    console.log('8. Syncing providers to user config...')
+    const userConfigPath = expandTilde('~/.tokenflow/config.json5')
+    let userConfig: any = {}
+    try {
+      const raw = readFileSync(userConfigPath, 'utf-8')
+      userConfig = JSON5.parse(raw)
+    } catch { /* ignore */ }
+    const existingNames = new Set((userConfig.Providers || []).map((p: any) => p.name))
+    const newProviders = providers.filter((p) => !existingNames.has(p.name))
+    if (newProviders.length > 0) {
+      userConfig.Providers = [...(userConfig.Providers || []), ...newProviders]
+      writeFileSync(userConfigPath, JSON5.stringify(userConfig, null, 2))
+      console.log(`   Added ${newProviders.length} providers to config`)
+    } else {
+      console.log('   No new providers to add')
+    }
+  }
+
+  // 9. Print summary
   printSummary(db, cfg, duration, metrics)
 
-  // 9. Cleanup or keep
+  // 10. Cleanup or keep
   if (cfg.keep) {
     console.log('\n⏸️  Server is running. Press Ctrl+C to stop.')
     console.log(`   TF API:  http://127.0.0.1:${tfPort}`)

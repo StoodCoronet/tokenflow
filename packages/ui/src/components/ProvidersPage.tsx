@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, Fragment } from 'react'
+import { AreaChart, Area, ResponsiveContainer } from 'recharts'
 import { fetchConfig, updateConfig, fetchKeys, createKey, deleteKey, fetchProviderModels, fetchDashboard } from '../api'
 
 // Simple pricing map: $ per 1M tokens (prompt, completion)
@@ -55,7 +56,7 @@ export function ProvidersPage() {
     setError(null)
     try {
       const [cfgRes, keysRes, dashRes] = await Promise.all([
-        fetchConfig(), fetchKeys(), fetchDashboard('7d')
+        fetchConfig(), fetchKeys(), fetchDashboard('all')
       ])
       setConfig(cfgRes.data)
       setKeys(keysRes.data || [])
@@ -112,9 +113,6 @@ export function ProvidersPage() {
     await loadData()
   }
 
-  const selected = providers.find(p => p.name === selectedProvider)
-  const providerKeys = keys.filter((k: any) => k.provider === selectedProvider)
-
   const endpointBase = `http://${window.location.hostname}:${config?.PORT || 3000}`
 
   if (loading) return <div className="text-tf-muted text-sm py-8 text-center">Loading providers...</div>
@@ -144,151 +142,157 @@ export function ProvidersPage() {
             const isSelected = selectedProvider === p.name
             const stats = computeProviderStats(p.name, providerKeys, dashboard)
             return (
-              <div
-                key={p.name}
-                onClick={() => setSelectedProvider(isSelected ? null : p.name)}
-                className={`bg-tf-card border rounded-xl p-4 cursor-pointer transition-all ${
-                  isSelected ? 'border-tf-accent ring-1 ring-tf-accent/30' : 'border-tf-border hover:border-tf-accent/50'
-                }`}
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-semibold text-tf-text">{p.name}</h3>
-                    <span className="text-[10px] px-1.5 py-0.5 bg-tf-border rounded-full capitalize text-tf-muted">
-                      {p.template || 'openai'}
-                    </span>
-                  </div>
-                  <span className="text-xs text-tf-muted">{keyCount} key{keyCount !== 1 ? 's' : ''}</span>
-                </div>
-                <div className="text-xs text-tf-muted truncate mb-3">{p.api_base_url}</div>
-
-                {/* Usage metadata */}
-                {stats.totalTokens > 0 && (
-                  <div className="mb-3 space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-tf-muted">7d usage</span>
-                      <span className="text-tf-text font-medium">{formatProviderTokens(stats.totalTokens)} tok</span>
+              <Fragment key={p.name}>
+                <div
+                  onClick={() => setSelectedProvider(isSelected ? null : p.name)}
+                  className={`bg-tf-card border rounded-xl p-4 cursor-pointer transition-all ${
+                    isSelected ? 'border-tf-accent ring-1 ring-tf-accent/30' : 'border-tf-border hover:border-tf-accent/50'
+                  }`}
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-semibold text-tf-text">{p.name}</h3>
+                      <span className="text-[10px] px-1.5 py-0.5 bg-tf-border rounded-full capitalize text-tf-muted">
+                        {p.template || 'openai'}
+                      </span>
                     </div>
-                    {stats.sparkline.length > 0 && (
-                      <div className="h-8 flex items-end gap-px">
-                        {stats.sparkline.map((v: number, i: number) => {
-                          const max = Math.max(...stats.sparkline, 1)
-                          const h = Math.max(2, (v / max) * 100)
-                          return (
-                            <div
-                              key={i}
-                              className="flex-1 bg-tf-accent/40 rounded-t-sm"
-                              style={{ height: `${h}%` }}
-                              title={`${v} tokens`}
-                            />
-                          )
-                        })}
-                      </div>
-                    )}
-                    {stats.estimatedCost > 0 && (
+                    <span className="text-xs text-tf-muted">{keyCount} key{keyCount !== 1 ? 's' : ''}</span>
+                  </div>
+                  <div className="text-xs text-tf-muted truncate mb-3">{p.api_base_url}</div>
+
+                  {/* Usage metadata */}
+                  {stats.totalTokens > 0 && (
+                    <div className="mb-3 space-y-1">
                       <div className="flex items-center justify-between text-xs">
-                        <span className="text-tf-muted">Est. cost</span>
-                        <span className="text-tf-text font-medium">${stats.estimatedCost.toFixed(2)}</span>
+                        <span className="text-tf-muted">7d usage</span>
+                        <span className="text-tf-text font-medium">{formatProviderTokens(stats.totalTokens)} tok</span>
                       </div>
-                    )}
+                      {stats.sparkline.length > 0 && (
+                        <div className="h-16 w-full">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={stats.sparkline.map((v, i) => ({ i, v }))}>
+                              <defs>
+                                <linearGradient id={`spark-${p.name.replace(/\s+/g, '-')}`} x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="5%" stopColor="var(--tf-accent)" stopOpacity={0.3} />
+                                  <stop offset="95%" stopColor="var(--tf-accent)" stopOpacity={0} />
+                                </linearGradient>
+                              </defs>
+                              <Area
+                                type="monotone"
+                                dataKey="v"
+                                stroke="var(--tf-accent)"
+                                strokeWidth={2}
+                                fill={`url(#spark-${p.name.replace(/\s+/g, '-')})`}
+                                isAnimationActive={false}
+                              />
+                            </AreaChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
+                      {stats.estimatedCost > 0 && (
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-tf-muted">Est. cost</span>
+                          <span className="text-tf-text font-medium">${stats.estimatedCost.toFixed(2)}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setEditingProvider(p); setShowProviderForm(true) }}
+                      className="text-xs px-2 py-1 rounded border border-tf-border text-tf-muted hover:text-tf-accent hover:border-tf-accent/50 transition-colors"
+                    >Edit</button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDeleteProvider(p.name) }}
+                      className="text-xs px-2 py-1 rounded border border-tf-border text-tf-muted hover:text-red-500 hover:border-red-500/50 transition-colors"
+                    >Delete</button>
+                  </div>
+                </div>
+
+                {isSelected && (
+                  <div className="col-span-1 md:col-span-2 lg:col-span-3 bg-tf-card border border-tf-border rounded-xl p-5 space-y-5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-semibold text-tf-text">{p.name}</h3>
+                        <span className="text-xs px-2 py-0.5 bg-tf-border rounded capitalize">{p.template || 'openai'}</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <div className="text-xs text-tf-muted mb-1">Base URL</div>
+                        <div className="text-tf-text text-xs break-all">{p.api_base_url}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-tf-muted mb-1">API Key</div>
+                        <div className="text-tf-text">{p.api_key ? '••••••••' : 'Not set'}</div>
+                      </div>
+                      <div className="col-span-2">
+                        <div className="text-xs text-tf-muted mb-1">Models</div>
+                        <div className="text-tf-text text-xs">{(p.models || []).join(', ') || 'All models allowed'}</div>
+                      </div>
+                      {p.options && Object.keys(p.options).length > 0 && (
+                        <div className="col-span-2">
+                          <div className="text-xs text-tf-muted mb-1">Options</div>
+                          <div className="text-tf-text text-xs font-mono">{JSON.stringify(p.options)}</div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="border-t border-tf-border pt-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="text-xs font-medium text-tf-muted uppercase tracking-wide">Keys</h4>
+                        <button
+                          onClick={() => { setKeyFormProvider(p.name); setShowKeyForm(true) }}
+                          className="text-xs text-tf-accent hover:underline"
+                        >
+                          + Add Key
+                        </button>
+                      </div>
+
+                      {providerKeys.length === 0 ? (
+                        <div className="text-tf-muted text-xs py-2">No keys for this provider.</div>
+                      ) : (
+                        <div className="space-y-1">
+                          {providerKeys.map((k: any) => (
+                            <div key={k.id} className="flex items-center justify-between bg-tf-bg border border-tf-border rounded-lg px-3 py-2">
+                              <div>
+                                <div className="text-sm text-tf-text">{k.name}</div>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <code className="text-xs text-tf-muted font-mono">{k.id.slice(0, 8)}...{k.id.slice(-4)}</code>
+                                  <CopyKeyButton keyId={k.id} />
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                {k.scenario && <span className="text-xs text-tf-muted bg-tf-border px-1.5 py-0.5 rounded">{k.scenario}</span>}
+                                <button
+                                  onClick={() => handleDeleteKey(k.id, k.name)}
+                                  className="text-xs text-tf-muted hover:text-red-500"
+                                >Delete</button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Usage Examples */}
+                      {providerKeys.length > 0 && (
+                        <div className="mt-4 bg-tf-bg border border-tf-border rounded-lg p-3 space-y-3">
+                          <ApiExampleTabs
+                            endpointBase={endpointBase}
+                            apiKey={providerKeys[0]?.id}
+                            template={p.template || 'openai'}
+                            providerName={p.name}
+                          />
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
-
-                <div className="flex gap-2">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setEditingProvider(p); setShowProviderForm(true) }}
-                    className="text-xs px-2 py-1 rounded border border-tf-border text-tf-muted hover:text-tf-accent hover:border-tf-accent/50 transition-colors"
-                  >Edit</button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleDeleteProvider(p.name) }}
-                    className="text-xs px-2 py-1 rounded border border-tf-border text-tf-muted hover:text-red-500 hover:border-red-500/50 transition-colors"
-                  >Delete</button>
-                </div>
-              </div>
+              </Fragment>
             )
           })}
-        </div>
-      )}
-
-      {/* Provider detail + Keys + Examples */}
-      {selected && (
-        <div className="bg-tf-card border border-tf-border rounded-xl p-5 space-y-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-semibold text-tf-text">{selected.name}</h3>
-              <span className="text-xs px-2 py-0.5 bg-tf-border rounded capitalize">{selected.template || 'openai'}</span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <div className="text-xs text-tf-muted mb-1">Base URL</div>
-              <div className="text-tf-text text-xs break-all">{selected.api_base_url}</div>
-            </div>
-            <div>
-              <div className="text-xs text-tf-muted mb-1">API Key</div>
-              <div className="text-tf-text">{selected.api_key ? '••••••••' : 'Not set'}</div>
-            </div>
-            <div className="col-span-2">
-              <div className="text-xs text-tf-muted mb-1">Models</div>
-              <div className="text-tf-text text-xs">{(selected.models || []).join(', ') || 'All models allowed'}</div>
-            </div>
-            {selected.options && Object.keys(selected.options).length > 0 && (
-              <div className="col-span-2">
-                <div className="text-xs text-tf-muted mb-1">Options</div>
-                <div className="text-tf-text text-xs font-mono">{JSON.stringify(selected.options)}</div>
-              </div>
-            )}
-          </div>
-
-          <div className="border-t border-tf-border pt-4">
-            <div className="flex items-center justify-between mb-3">
-              <h4 className="text-xs font-medium text-tf-muted uppercase tracking-wide">Keys</h4>
-              <button
-                onClick={() => { setKeyFormProvider(selected.name); setShowKeyForm(true) }}
-                className="text-xs text-tf-accent hover:underline"
-              >
-                + Add Key
-              </button>
-            </div>
-
-            {providerKeys.length === 0 ? (
-              <div className="text-tf-muted text-xs py-2">No keys for this provider.</div>
-            ) : (
-              <div className="space-y-2">
-                {providerKeys.map((k: any) => (
-                  <div key={k.id} className="flex items-center justify-between bg-tf-bg border border-tf-border rounded-lg px-3 py-2">
-                    <div>
-                      <div className="text-sm text-tf-text">{k.name}</div>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <code className="text-xs text-tf-muted font-mono">{k.id.slice(0, 8)}...{k.id.slice(-4)}</code>
-                        <CopyKeyButton keyId={k.id} />
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      {k.scenario && <span className="text-xs text-tf-muted bg-tf-border px-1.5 py-0.5 rounded">{k.scenario}</span>}
-                      <button
-                        onClick={() => handleDeleteKey(k.id, k.name)}
-                        className="text-xs text-tf-muted hover:text-red-500"
-                      >Delete</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Usage Examples */}
-            {providerKeys.length > 0 && (
-              <div className="mt-4 bg-tf-bg border border-tf-border rounded-lg p-3 space-y-3">
-                <ApiExampleTabs
-                  endpointBase={endpointBase}
-                  apiKey={providerKeys[0]?.id}
-                  template={selected.template || 'openai'}
-                  providerName={selected.name}
-                />
-              </div>
-            )}
-          </div>
         </div>
       )}
 
@@ -823,7 +827,7 @@ function ProviderFormModal({
                   {extraHeaders.length === 0 && (
                     <div className="text-xs text-tf-muted mb-2">No extra headers configured.</div>
                   )}
-                  <div className="space-y-2">
+                  <div className="space-y-1">
                     {extraHeaders.map((h, i) => (
                       <div key={i} className="flex gap-2">
                         <input

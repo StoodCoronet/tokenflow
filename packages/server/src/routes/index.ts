@@ -46,6 +46,7 @@ export async function registerRoutes(app: FastifyInstance) {
       '24h': '-24 hours',
       '7d': '-7 days',
       '30d': '-30 days',
+      'all': '-90 days',
     }[range as string] || '-24 hours'
 
     const summary = db.prepare(`
@@ -170,6 +171,7 @@ export async function registerRoutes(app: FastifyInstance) {
       '24h': '-24 hours',
       '7d': '-7 days',
       '30d': '-30 days',
+      'all': '-90 days',
     }[range as string] || '-24 hours'
 
     const db = getDb()

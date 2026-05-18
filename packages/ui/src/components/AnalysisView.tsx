@@ -285,12 +285,15 @@ function TrendChart({ trend, keyTrends, colors }: { trend: any[]; keyTrends?: an
               <stop offset="5%" stopColor={(colors || COLORS)[0]} stopOpacity={0.3} />
               <stop offset="95%" stopColor={(colors || COLORS)[0]} stopOpacity={0} />
             </linearGradient>
-            {activeKeys.map((keyName, i) => (
-              <linearGradient key={keyName} id={`color${i}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor={(colors || COLORS)[i % (colors || COLORS).length]} stopOpacity={0.3} />
-                <stop offset="95%" stopColor={(colors || COLORS)[i % (colors || COLORS).length]} stopOpacity={0} />
-              </linearGradient>
-            ))}
+            {activeKeys.map((keyName) => {
+              const ci = allKeyNames.indexOf(keyName)
+              return (
+                <linearGradient key={keyName} id={`color${ci}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={(colors || COLORS)[ci % (colors || COLORS).length]} stopOpacity={0.3} />
+                  <stop offset="95%" stopColor={(colors || COLORS)[ci % (colors || COLORS).length]} stopOpacity={0} />
+                </linearGradient>
+              )
+            })}
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="#333" />
           <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#888' }} />
@@ -302,17 +305,20 @@ function TrendChart({ trend, keyTrends, colors }: { trend: any[]; keyTrends?: an
           {!showPerKey && (
             <Area type="monotone" dataKey="Total" stroke={(colors || COLORS)[0]} fillOpacity={1} fill="url(#colorTotal)" />
           )}
-          {showPerKey && activeKeys.map((keyName, i) => (
-            <Area
-              key={keyName}
-              type="monotone"
-              dataKey={keyName}
-              stroke={(colors || COLORS)[i % (colors || COLORS).length]}
-              fillOpacity={1}
-              fill={`url(#color${i})`}
-              stackId="1"
-            />
-          ))}
+          {showPerKey && activeKeys.map((keyName) => {
+            const ci = allKeyNames.indexOf(keyName)
+            return (
+              <Area
+                key={keyName}
+                type="monotone"
+                dataKey={keyName}
+                stroke={(colors || COLORS)[ci % (colors || COLORS).length]}
+                fillOpacity={1}
+                fill={`url(#color${ci})`}
+                stackId="1"
+              />
+            )
+          })}
         </AreaChart>
       </ResponsiveContainer>
     </div>
