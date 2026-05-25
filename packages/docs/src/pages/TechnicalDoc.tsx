@@ -415,6 +415,15 @@ const CONTENT = {
   },
 }
 
+interface Comment {
+  id: string
+  sectionId: string
+  author: 'user' | 'cooperator'
+  content: string
+  selectedText: string
+  timestamp: number
+}
+
 type Lang = 'zh' | 'en'
 
 export default function TechnicalDoc() {
@@ -425,16 +434,99 @@ export default function TechnicalDoc() {
     return saved ? JSON.parse(saved) : []
   })
 
+  const [tooltip, setTooltip] = useState<{ x: number; y: number; text: string } | null>(null)
+
   useEffect(() => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('tf-technicaldoc-comments', JSON.stringify(comments))
     }
   }, [comments])
 
+  // Restore highlights after render
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined') return
+
+    // Clear old highlights
+    document.querySelectorAll('.tf-highlight').forEach(el => {
+      const parent = el.parentNode
+      if (parent) {
+        parent.replaceChild(document.createTextNode(el.textContent || ''), el)
+        parent.normalize()
+      }
+    })
+
+    // Apply new highlights
+    comments.forEach(comment => {
+      if (!comment.selectedText) return
+      const walker = document.createTreeWalker(
+        document.body,
+        NodeFilter.SHOW_TEXT,
+        null,
+        false
+      )
+      let node: Text | null
+      while ((node = walker.nextNode() as Text)) {
+        const idx = node.textContent?.indexOf(comment.selectedText)
+        if (idx !== undefined && idx !== -1 && idx >= 0) {
+          const after = node.splitText(idx + comment.selectedText.length)
+          const middle = node.splitText(idx)
+          const span = document.createElement('span')
+          span.className = 'tf-highlight'
+          span.style.backgroundColor = 'rgba(234, 179, 8, 0.3)'
+          span.style.cursor = 'pointer'
+          span.style.borderRadius = '2px'
+          span.dataset.commentId = comment.id
+          span.textContent = comment.selectedText
+          middle.parentNode?.replaceChild(span, middle)
+          break
+        }
+      }
+    })
+  }, [comments])
+
+  // Text selection listener
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handleSelection = () => {
+      const sel = window.getSelection()
+      if (!sel || sel.isCollapsed) {
+        setTooltip(null)
+        return
+      }
+      const text = sel.toString().trim()
+      if (text.length < 2) {
+        setTooltip(null)
+        return
+      }
+      const range = sel.getRangeAt(0)
+      const rect = range.getBoundingClientRect()
+      setTooltip({
+        x: rect.left + rect.width / 2,
+        y: rect.top + window.scrollY - 40,
+        text,
+      })
+    }
+    document.addEventListener('selectionchange', handleSelection)
+    return () => document.removeEventListener('selectionchange', handleSelection)
+  }, [])
+
   const t = CONTENT[lang]
 
+  const onAddWithSelection = (selectedText: string) => {
+    const sectionId = COMMENT_SECTIONS[0]?.value || 'abstract'
+    setComments(prev => [...prev, {
+      id: crypto.randomUUID(),
+      timestamp: Date.now(),
+      sectionId,
+      author: 'user',
+      content: '',
+      selectedText,
+    }])
+    setCommentsOpen(true)
+  }
+
   return (
-    <div className="space-y-10 relative">
+    <div className="space-y-10 relative" id="technical-doc-root">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-tf-text">{lang === 'zh' ? '技术文档' : 'Technical Documentation'}</h2>
         <button
@@ -665,12 +757,28 @@ export default function TechnicalDoc() {
         </ul>
       </section>
 
+      {/* Tooltip for text selection */}
+      {tooltip && (
+        <div
+          className="fixed z-[60] bg-tf-accent text-white text-xs px-3 py-1.5 rounded shadow-lg cursor-pointer hover:bg-tf-accent/90 transition-colors"
+          style={{ left: tooltip.x, top: tooltip.y, transform: 'translateX(-50%)' }}
+          onClick={() => {
+            onAddWithSelection(tooltip.text)
+            setTooltip(null)
+            window.getSelection()?.removeAllRanges()
+          }}
+        >
+          添加批注
+        </div>
+      )}
+
       <CommentsPanel
         open={commentsOpen}
         onToggle={() => setCommentsOpen(o => !o)}
         comments={comments}
         onAdd={(c) => setComments(prev => [...prev, { ...c, id: crypto.randomUUID(), timestamp: Date.now() }])}
         onDelete={(id) => setComments(prev => prev.filter(c => c.id !== id))}
+        onUpdate={(id, content) => setComments(prev => prev.map(c => c.id === id ? { ...c, content } : c))}
         onExport={() => {
           const blob = new Blob([JSON.stringify({ version: '1', comments }, null, 2)], { type: 'application/json' })
           const url = URL.createObjectURL(blob)
@@ -826,6 +934,7 @@ function CommentsPanel({
   comments,
   onAdd,
   onDelete,
+  onUpdate,
   onExport,
   onImport,
 }: {
@@ -834,18 +943,30 @@ function CommentsPanel({
   comments: Comment[]
   onAdd: (c: Omit<Comment, 'id' | 'timestamp'>) => void
   onDelete: (id: string) => void
+  onUpdate: (id: string, content: string) => void
   onExport: () => void
   onImport: (json: string) => void
 }) {
-  const [sectionId, setSectionId] = useState('experiment')
-  const [author, setAuthor] = useState<'user' | 'cooperator'>('user')
-  const [content, setContent] = useState('')
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editContent, setEditContent] = useState('')
 
-  const grouped = comments.reduce<Record<string, Comment[]>>((acc, c) => {
-    acc[c.sectionId] = acc[c.sectionId] || []
-    acc[c.sectionId].push(c)
-    return acc
-  }, {})
+  const scrollToHighlight = (id: string) => {
+    const el = document.querySelector(`.tf-highlight[data-comment-id="${id}"]`)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      ;(el as HTMLElement).style.backgroundColor = 'rgba(234, 179, 8, 0.6)'
+      setTimeout(() => {
+        ;(el as HTMLElement).style.backgroundColor = 'rgba(234, 179, 8, 0.3)'
+      }, 1500)
+    }
+  }
+
+  const saveEdit = (id: string) => {
+    if (!editContent.trim()) return
+    onUpdate(id, editContent.trim())
+    setEditingId(null)
+    setEditContent('')
+  }
 
   return (
     <>
@@ -855,7 +976,7 @@ function CommentsPanel({
         className={`fixed bottom-6 right-6 z-50 w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition-colors ${
           open ? 'bg-tf-accent text-white' : 'bg-tf-card text-tf-text border border-tf-border hover:border-tf-accent/50'
         }`}
-        title="Comments"
+        title="Annotations"
       >
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
@@ -867,12 +988,12 @@ function CommentsPanel({
         )}
       </button>
 
-      {/* Panel */}
+      {/* Right-side panel */}
       {open && (
-        <div className="fixed bottom-20 right-6 z-50 w-80 max-h-[70vh] bg-tf-card border border-tf-border rounded-xl shadow-2xl flex flex-col overflow-hidden">
+        <div className="fixed top-0 right-0 z-50 w-80 h-screen bg-tf-card border-l border-tf-border shadow-2xl flex flex-col">
           {/* Header */}
-          <div className="px-4 py-3 border-b border-tf-border flex items-center justify-between bg-tf-border/10">
-            <h3 className="text-sm font-semibold text-tf-text">Comments</h3>
+          <div className="px-4 py-3 border-b border-tf-border flex items-center justify-between bg-tf-border/10 shrink-0">
+            <h3 className="text-sm font-semibold text-tf-text">Annotations</h3>
             <div className="flex items-center gap-1">
               <button
                 onClick={onExport}
@@ -906,77 +1027,83 @@ function CommentsPanel({
             </div>
           </div>
 
-          {/* Comment list */}
+          {/* Annotation list */}
           <div className="flex-1 overflow-y-auto p-3 space-y-3">
             {comments.length === 0 && (
-              <p className="text-xs text-tf-muted text-center py-4">No comments yet. Add one below.</p>
+              <p className="text-xs text-tf-muted text-center py-4">Select text on the page and click "添加批注" to add an annotation.</p>
             )}
-            {Object.entries(grouped).map(([sid, list]) => {
-              const section = COMMENT_SECTIONS.find(s => s.value === sid)
+            {comments.map(c => {
+              const section = COMMENT_SECTIONS.find(s => s.value === c.sectionId)
+              const isEditing = editingId === c.id
               return (
-                <div key={sid}>
-                  <div className="text-[10px] font-medium text-tf-accent mb-1">{section?.label || sid}</div>
-                  {list.map(c => (
-                    <div key={c.id} className="bg-tf-bg border border-tf-border/50 rounded-lg p-2 mb-1.5">
-                      <div className="flex items-center justify-between mb-0.5">
-                        <span className={`text-[10px] font-medium ${c.author === 'user' ? 'text-blue-400' : 'text-purple-400'}`}>
-                          {c.author}
-                        </span>
-                        <button onClick={() => onDelete(c.id)} className="text-tf-muted hover:text-red-400">
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <line x1="18" y1="6" x2="6" y2="18" />
-                            <line x1="6" y1="6" x2="18" y2="18" />
-                          </svg>
+                <div
+                  key={c.id}
+                  className="bg-tf-bg border border-tf-border/50 rounded-lg p-2.5 cursor-pointer hover:border-tf-accent/30 transition-colors"
+                  onClick={() => scrollToHighlight(c.id)}
+                >
+                  {/* Selected text quote */}
+                  {c.selectedText && (
+                    <div className="text-[10px] bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 px-1.5 py-0.5 rounded mb-1.5 truncate border-l-2 border-yellow-500/40">
+                      "{c.selectedText.length > 60 ? c.selectedText.slice(0, 60) + '...' : c.selectedText}"
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between mb-1">
+                    <span className={`text-[10px] font-medium ${c.author === 'user' ? 'text-blue-400' : 'text-purple-400'}`}>
+                      {c.author}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[9px] text-tf-muted">{section?.label || c.sectionId}</span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onDelete(c.id) }}
+                        className="text-tf-muted hover:text-red-400"
+                      >
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <line x1="18" y1="6" x2="6" y2="18" />
+                          <line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  {isEditing ? (
+                    <div className="space-y-1" onClick={(e) => e.stopPropagation()}>
+                      <textarea
+                        value={editContent}
+                        onChange={(e) => setEditContent(e.target.value)}
+                        rows={2}
+                        className="w-full text-[11px] bg-tf-card border border-tf-border rounded px-2 py-1 text-tf-text resize-none"
+                        autoFocus
+                      />
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => saveEdit(c.id)}
+                          className="text-[10px] px-2 py-0.5 rounded bg-tf-accent text-white"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => { setEditingId(null); setEditContent('') }}
+                          className="text-[10px] px-2 py-0.5 rounded bg-tf-border/30 text-tf-muted"
+                        >
+                          Cancel
                         </button>
                       </div>
-                      <p className="text-[11px] text-tf-text whitespace-pre-wrap">{c.content}</p>
-                      <p className="text-[9px] text-tf-muted mt-0.5">{new Date(c.timestamp).toLocaleString()}</p>
                     </div>
-                  ))}
+                  ) : (
+                    <div onClick={(e) => { e.stopPropagation(); setEditingId(c.id); setEditContent(c.content) }}>
+                      {c.content ? (
+                        <p className="text-[11px] text-tf-text whitespace-pre-wrap">{c.content}</p>
+                      ) : (
+                        <p className="text-[11px] text-tf-muted italic">Click to add annotation text...</p>
+                      )}
+                    </div>
+                  )}
+
+                  <p className="text-[9px] text-tf-muted mt-1">{new Date(c.timestamp).toLocaleString()}</p>
                 </div>
               )
             })}
-          </div>
-
-          {/* Add form */}
-          <div className="border-t border-tf-border p-3 space-y-2 bg-tf-border/5">
-            <div className="flex gap-2">
-              <select
-                value={sectionId}
-                onChange={(e) => setSectionId(e.target.value)}
-                className="flex-1 text-[11px] bg-tf-bg border border-tf-border rounded px-2 py-1 text-tf-text"
-              >
-                {COMMENT_SECTIONS.map(s => (
-                  <option key={s.value} value={s.value}>{s.label}</option>
-                ))}
-              </select>
-              <select
-                value={author}
-                onChange={(e) => setAuthor(e.target.value as 'user' | 'cooperator')}
-                className="text-[11px] bg-tf-bg border border-tf-border rounded px-2 py-1 text-tf-text"
-              >
-                <option value="user">user</option>
-                <option value="cooperator">cooperator</option>
-              </select>
-            </div>
-            <textarea
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              placeholder="Write a comment..."
-              rows={2}
-              className="w-full text-[11px] bg-tf-bg border border-tf-border rounded px-2 py-1.5 text-tf-text resize-none"
-            />
-            <button
-              onClick={() => {
-                if (!content.trim()) return
-                onAdd({ sectionId, author, content: content.trim() })
-                setContent('')
-              }}
-              disabled={!content.trim()}
-              className="w-full text-[11px] py-1.5 rounded bg-tf-accent text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-tf-accent/90 transition-colors"
-            >
-              Add Comment
-            </button>
           </div>
         </div>
       )}
