@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Layout from './components/Layout'
 import QuickStart from './pages/QuickStart'
 import Features from './pages/Features'
@@ -20,15 +20,32 @@ const pages: Record<Page, { title: string; component: () => JSX.Element }> = {
   technical: { title: '技术文档', component: TechnicalDoc },
 }
 
+function getInitialPage(): Page {
+  const hash = window.location.hash.replace('#', '')
+  if (hash && hash in pages) return hash as Page
+  return 'quickstart'
+}
+
 export default function App() {
-  const [page, setPage] = useState<Page>('quickstart')
+  const [page, setPage] = useState<Page>(getInitialPage)
+
+  useEffect(() => {
+    const handleHashChange = () => setPage(getInitialPage())
+    window.addEventListener('hashchange', handleHashChange)
+    return () => window.removeEventListener('hashchange', handleHashChange)
+  }, [])
+
+  const handleNavigate = (p: string) => {
+    setPage(p as Page)
+    window.location.hash = p
+  }
 
   const PageComponent = pages[page].component
 
   return (
     <Layout
       currentPage={page}
-      onNavigate={(p) => setPage(p as Page)}
+      onNavigate={handleNavigate}
       pages={pages}
     >
       <PageComponent />
