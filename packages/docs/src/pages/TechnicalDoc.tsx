@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 const CONTENT = {
   zh: {
@@ -155,7 +155,7 @@ const CONTENT = {
         strategy: '通过文献调研与产品分析，梳理 ChatGPT、Claude、Cursor、Coze、Dify 等系统的上下文处理方式。',
         table: [
           { label: '方法', value: '文献调研 + 产品逆向分析' },
-          { label: '调研对象', value: 'ChatGPT / Claude / Cursor / Coze / Dify / 其他主流 LLM 应用' },
+          { label: '调研对象', value: '① OpenCoder（开源优先） ② Codex ③ Claude Code（曾泄露，可参考） ④ ChatGPT / Claude / Cursor / Coze / Dify（闭源，优先级降低）' },
           { label: '目标', value: '总结现有上下文管理策略的分类体系，为后续检测实验提供参照基线' },
         ],
         todo: '[TODO] 完成系统性调研并整理分类表格。',
@@ -361,7 +361,7 @@ const CONTENT = {
         strategy: 'Review literature and analyze products such as ChatGPT, Claude, Cursor, Coze, and Dify to understand their context handling approaches.',
         table: [
           { label: 'Method', value: 'Literature review + product reverse analysis' },
-          { label: 'Targets', value: 'ChatGPT / Claude / Cursor / Coze / Dify / other mainstream LLM apps' },
+          { label: 'Targets', value: '① OpenCoder (open-source, high priority) ② Codex ③ Claude Code (leaked, consider) ④ ChatGPT / Claude / Cursor / Coze / Dify (closed-source, lower priority)' },
           { label: 'Goal', value: 'Summarize a taxonomy of existing context management strategies as a reference baseline for detection experiments' },
         ],
         todo: '[TODO] Complete systematic survey and compile classification table.',
@@ -419,10 +419,22 @@ type Lang = 'zh' | 'en'
 
 export default function TechnicalDoc() {
   const [lang, setLang] = useState<Lang>('zh')
+  const [commentsOpen, setCommentsOpen] = useState(false)
+  const [comments, setComments] = useState<Comment[]>(() => {
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('tf-technicaldoc-comments') : null
+    return saved ? JSON.parse(saved) : []
+  })
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('tf-technicaldoc-comments', JSON.stringify(comments))
+    }
+  }, [comments])
+
   const t = CONTENT[lang]
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-10 relative">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-tf-text">{lang === 'zh' ? '技术文档' : 'Technical Documentation'}</h2>
         <button
@@ -652,6 +664,33 @@ export default function TechnicalDoc() {
           <li>{t.conclusion.li4}</li>
         </ul>
       </section>
+
+      <CommentsPanel
+        open={commentsOpen}
+        onToggle={() => setCommentsOpen(o => !o)}
+        comments={comments}
+        onAdd={(c) => setComments(prev => [...prev, { ...c, id: crypto.randomUUID(), timestamp: Date.now() }])}
+        onDelete={(id) => setComments(prev => prev.filter(c => c.id !== id))}
+        onExport={() => {
+          const blob = new Blob([JSON.stringify({ version: '1', comments }, null, 2)], { type: 'application/json' })
+          const url = URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = url
+          a.download = 'technicaldoc-comments.json'
+          a.click()
+          URL.revokeObjectURL(url)
+        }}
+        onImport={(json) => {
+          try {
+            const data = JSON.parse(json)
+            if (data.comments && Array.isArray(data.comments)) {
+              setComments(data.comments)
+            }
+          } catch {
+            alert('Invalid JSON')
+          }
+        }}
+      />
     </div>
   )
 }
@@ -778,5 +817,169 @@ function Arrow() {
       <div className="w-px h-3 bg-tf-border" />
       <div className="w-0 h-0 border-x-4 border-x-transparent border-t-[5px] border-t-tf-border" />
     </div>
+  )
+}
+
+function CommentsPanel({
+  open,
+  onToggle,
+  comments,
+  onAdd,
+  onDelete,
+  onExport,
+  onImport,
+}: {
+  open: boolean
+  onToggle: () => void
+  comments: Comment[]
+  onAdd: (c: Omit<Comment, 'id' | 'timestamp'>) => void
+  onDelete: (id: string) => void
+  onExport: () => void
+  onImport: (json: string) => void
+}) {
+  const [sectionId, setSectionId] = useState('experiment')
+  const [author, setAuthor] = useState<'user' | 'cooperator'>('user')
+  const [content, setContent] = useState('')
+
+  const grouped = comments.reduce<Record<string, Comment[]>>((acc, c) => {
+    acc[c.sectionId] = acc[c.sectionId] || []
+    acc[c.sectionId].push(c)
+    return acc
+  }, {})
+
+  return (
+    <>
+      {/* Floating toggle button */}
+      <button
+        onClick={onToggle}
+        className={`fixed bottom-6 right-6 z-50 w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition-colors ${
+          open ? 'bg-tf-accent text-white' : 'bg-tf-card text-tf-text border border-tf-border hover:border-tf-accent/50'
+        }`}
+        title="Comments"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+        </svg>
+        {comments.length > 0 && (
+          <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center">
+            {comments.length}
+          </span>
+        )}
+      </button>
+
+      {/* Panel */}
+      {open && (
+        <div className="fixed bottom-20 right-6 z-50 w-80 max-h-[70vh] bg-tf-card border border-tf-border rounded-xl shadow-2xl flex flex-col overflow-hidden">
+          {/* Header */}
+          <div className="px-4 py-3 border-b border-tf-border flex items-center justify-between bg-tf-border/10">
+            <h3 className="text-sm font-semibold text-tf-text">Comments</h3>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={onExport}
+                className="text-[10px] px-2 py-1 rounded bg-tf-border/30 text-tf-muted hover:text-tf-text transition-colors"
+                title="Export JSON"
+              >
+                Export
+              </button>
+              <label className="text-[10px] px-2 py-1 rounded bg-tf-border/30 text-tf-muted hover:text-tf-text transition-colors cursor-pointer">
+                Import
+                <input
+                  type="file"
+                  accept="application/json"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    const reader = new FileReader()
+                    reader.onload = (ev) => onImport(String(ev.target?.result || ''))
+                    reader.readAsText(file)
+                    e.target.value = ''
+                  }}
+                />
+              </label>
+              <button onClick={onToggle} className="text-tf-muted hover:text-tf-text ml-1">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {/* Comment list */}
+          <div className="flex-1 overflow-y-auto p-3 space-y-3">
+            {comments.length === 0 && (
+              <p className="text-xs text-tf-muted text-center py-4">No comments yet. Add one below.</p>
+            )}
+            {Object.entries(grouped).map(([sid, list]) => {
+              const section = COMMENT_SECTIONS.find(s => s.value === sid)
+              return (
+                <div key={sid}>
+                  <div className="text-[10px] font-medium text-tf-accent mb-1">{section?.label || sid}</div>
+                  {list.map(c => (
+                    <div key={c.id} className="bg-tf-bg border border-tf-border/50 rounded-lg p-2 mb-1.5">
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span className={`text-[10px] font-medium ${c.author === 'user' ? 'text-blue-400' : 'text-purple-400'}`}>
+                          {c.author}
+                        </span>
+                        <button onClick={() => onDelete(c.id)} className="text-tf-muted hover:text-red-400">
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                          </svg>
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-tf-text whitespace-pre-wrap">{c.content}</p>
+                      <p className="text-[9px] text-tf-muted mt-0.5">{new Date(c.timestamp).toLocaleString()}</p>
+                    </div>
+                  ))}
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Add form */}
+          <div className="border-t border-tf-border p-3 space-y-2 bg-tf-border/5">
+            <div className="flex gap-2">
+              <select
+                value={sectionId}
+                onChange={(e) => setSectionId(e.target.value)}
+                className="flex-1 text-[11px] bg-tf-bg border border-tf-border rounded px-2 py-1 text-tf-text"
+              >
+                {COMMENT_SECTIONS.map(s => (
+                  <option key={s.value} value={s.value}>{s.label}</option>
+                ))}
+              </select>
+              <select
+                value={author}
+                onChange={(e) => setAuthor(e.target.value as 'user' | 'cooperator')}
+                className="text-[11px] bg-tf-bg border border-tf-border rounded px-2 py-1 text-tf-text"
+              >
+                <option value="user">user</option>
+                <option value="cooperator">cooperator</option>
+              </select>
+            </div>
+            <textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder="Write a comment..."
+              rows={2}
+              className="w-full text-[11px] bg-tf-bg border border-tf-border rounded px-2 py-1.5 text-tf-text resize-none"
+            />
+            <button
+              onClick={() => {
+                if (!content.trim()) return
+                onAdd({ sectionId, author, content: content.trim() })
+                setContent('')
+              }}
+              disabled={!content.trim()}
+              className="w-full text-[11px] py-1.5 rounded bg-tf-accent text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-tf-accent/90 transition-colors"
+            >
+              Add Comment
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
