@@ -525,6 +525,9 @@ export default function TechnicalDoc() {
     const main = document.querySelector('main')
     if (!main) return
 
+    // Remove max-width limit on TechnicalDoc page so content can use full available space
+    main.classList.remove('max-w-4xl')
+
     const updateMainPadding = () => {
       if (commentsOpen) {
         main.style.paddingRight = `${panelWidth}px`
@@ -535,6 +538,7 @@ export default function TechnicalDoc() {
     updateMainPadding()
 
     return () => {
+      main.classList.add('max-w-4xl')
       main.style.paddingRight = ''
     }
   }, [commentsOpen, panelWidth])
