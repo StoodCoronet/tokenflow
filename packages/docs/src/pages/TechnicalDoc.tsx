@@ -492,7 +492,10 @@ function removeTempHighlights() {
   })
 }
 
-const PANEL_WIDTH = 320
+const PANEL_WIDTH_KEY = 'tf-technicaldoc-panel-width'
+const MIN_PANEL_WIDTH = 240
+const MAX_PANEL_WIDTH = 800
+const DEFAULT_PANEL_WIDTH = 320
 const PANEL_GAP = 80
 
 export default function TechnicalDoc() {
@@ -501,6 +504,12 @@ export default function TechnicalDoc() {
   const [comments, setComments] = useState<Comment[]>(() => {
     const saved = typeof window !== 'undefined' ? localStorage.getItem('tf-technicaldoc-comments') : null
     return saved ? JSON.parse(saved) : []
+  })
+
+  const [panelWidth, setPanelWidth] = useState(() => {
+    if (typeof window === 'undefined') return DEFAULT_PANEL_WIDTH
+    const saved = localStorage.getItem(PANEL_WIDTH_KEY)
+    return saved ? Math.max(MIN_PANEL_WIDTH, Math.min(MAX_PANEL_WIDTH, parseInt(saved, 10))) : DEFAULT_PANEL_WIDTH
   })
 
   const [selectedInfo, setSelectedInfo] = useState<{ text: string; sectionId: string; sectionOrder: number } | null>(null)
@@ -521,7 +530,7 @@ export default function TechnicalDoc() {
     main.classList.remove('max-w-4xl')
 
     if (commentsOpen) {
-      main.style.paddingRight = `${PANEL_WIDTH + PANEL_GAP}px`
+      main.style.paddingRight = `${panelWidth + PANEL_GAP}px`
     } else {
       main.style.paddingRight = ''
     }
@@ -530,7 +539,7 @@ export default function TechnicalDoc() {
       main.classList.add('max-w-4xl')
       main.style.paddingRight = ''
     }
-  }, [commentsOpen])
+  }, [commentsOpen, panelWidth])
 
   // Restore persistent highlights after render
   useLayoutEffect(() => {
@@ -875,6 +884,8 @@ export default function TechnicalDoc() {
         comments={comments}
         selectedInfo={selectedInfo}
         onAddWithSelection={onAddWithSelection}
+        panelWidth={panelWidth}
+        onResize={setPanelWidth}
         onDelete={(id) => setComments(prev => prev.filter(c => c.id !== id))}
         onUpdate={(id, content) => setComments(prev => prev.map(c => c.id === id ? { ...c, content } : c))}
         onExport={() => {
@@ -1032,6 +1043,8 @@ function CommentsPanel({
   comments,
   selectedInfo,
   onAddWithSelection,
+  panelWidth,
+  onResize,
   onDelete,
   onUpdate,
   onExport,
@@ -1042,6 +1055,8 @@ function CommentsPanel({
   comments: Comment[]
   selectedInfo: { text: string; sectionId: string; sectionOrder: number } | null
   onAddWithSelection: () => void
+  panelWidth: number
+  onResize: (width: number) => void
   onDelete: (id: string) => void
   onUpdate: (id: string, content: string) => void
   onExport: () => void
@@ -1049,6 +1064,25 @@ function CommentsPanel({
 }) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editContent, setEditContent] = useState('')
+  const [isResizing, setIsResizing] = useState(false)
+
+  useEffect(() => {
+    if (!isResizing) return
+    const handleMove = (e: MouseEvent) => {
+      const newWidth = Math.max(MIN_PANEL_WIDTH, Math.min(MAX_PANEL_WIDTH, window.innerWidth - e.clientX))
+      onResize(newWidth)
+    }
+    const handleUp = () => {
+      setIsResizing(false)
+      localStorage.setItem(PANEL_WIDTH_KEY, String(panelWidth))
+    }
+    document.addEventListener('mousemove', handleMove)
+    document.addEventListener('mouseup', handleUp)
+    return () => {
+      document.removeEventListener('mousemove', handleMove)
+      document.removeEventListener('mouseup', handleUp)
+    }
+  }, [isResizing, panelWidth, onResize])
 
   const scrollToHighlight = (id: string) => {
     const el = document.querySelector(`.tf-highlight[data-comment-id="${id}"]`)
@@ -1097,7 +1131,16 @@ function CommentsPanel({
 
       {/* Right-side panel */}
       {open && (
-        <div className="comments-panel fixed top-0 right-0 z-50 w-80 h-screen bg-tf-card border-l border-tf-border shadow-2xl flex flex-col">
+        <div
+          className="comments-panel fixed top-0 right-0 z-50 h-screen bg-tf-card border-l border-tf-border shadow-2xl flex flex-col"
+          style={{ width: panelWidth }}
+        >
+          {/* Resize handle */}
+          <div
+            className={`absolute top-0 left-0 h-full w-1 cursor-col-resize z-10 hover:bg-tf-accent/30 transition-colors ${isResizing ? 'bg-tf-accent/50' : 'bg-transparent'}`}
+            onMouseDown={() => setIsResizing(true)}
+            title="Drag to resize"
+          />
           {/* Header */}
           <div className="px-4 py-3 border-b border-tf-border flex items-center justify-between bg-tf-border/10 shrink-0">
             <h3 className="text-sm font-semibold text-tf-text">Annotations</h3>
