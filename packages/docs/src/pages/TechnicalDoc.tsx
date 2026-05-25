@@ -418,6 +418,7 @@ const CONTENT = {
 interface Comment {
   id: string
   sectionId: string
+  sectionOrder: number
   author: 'user' | 'cooperator'
   content: string
   selectedText: string
@@ -440,15 +441,66 @@ function generateId(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36) + Math.random().toString(36).slice(2)
 }
 
+function getSelectionInfo(): { text: string; sectionId: string; sectionOrder: number } | null {
+  const sel = window.getSelection()
+  if (!sel || sel.isCollapsed) return null
+  const text = sel.toString().trim()
+  if (text.length < 2) return null
+
+  const range = sel.getRangeAt(0)
+  let node: Node = range.commonAncestorContainer
+  if (node.nodeType === Node.TEXT_NODE) node = node.parentNode!
+  const sectionEl = (node as HTMLElement).closest('section[data-section-id]')
+  if (!sectionEl) return null
+
+  const sectionId = sectionEl.getAttribute('data-section-id')!
+  const preRange = range.cloneRange()
+  preRange.selectNodeContents(sectionEl)
+  preRange.setEnd(range.startContainer, range.startOffset)
+  const sectionOrder = preRange.toString().length
+
+  return { text, sectionId, sectionOrder }
+}
+
+function wrapSelectionWithTempHighlight(): HTMLSpanElement | null {
+  const sel = window.getSelection()
+  if (!sel || sel.isCollapsed) return null
+  const range = sel.getRangeAt(0)
+
+  const span = document.createElement('span')
+  span.className = 'tf-temp-highlight'
+  span.style.backgroundColor = 'rgba(234, 179, 8, 0.5)'
+  span.style.borderRadius = '2px'
+
+  try {
+    range.surroundContents(span)
+  } catch {
+    const contents = range.extractContents()
+    span.appendChild(contents)
+    range.insertNode(span)
+  }
+  return span
+}
+
+function removeTempHighlights() {
+  document.querySelectorAll('.tf-temp-highlight').forEach(el => {
+    const parent = el.parentNode
+    if (parent) {
+      parent.replaceChild(document.createTextNode(el.textContent || ''), el)
+      parent.normalize()
+    }
+  })
+}
+
 export default function TechnicalDoc() {
   const [lang, setLang] = useState<Lang>('zh')
-  const [commentsOpen, setCommentsOpen] = useState(false)
+  const [commentsOpen, setCommentsOpen] = useState(true)
   const [comments, setComments] = useState<Comment[]>(() => {
     const saved = typeof window !== 'undefined' ? localStorage.getItem('tf-technicaldoc-comments') : null
     return saved ? JSON.parse(saved) : []
   })
 
-  const [tooltip, setTooltip] = useState<{ x: number; y: number; text: string } | null>(null)
+  const [selectedInfo, setSelectedInfo] = useState<{ text: string; sectionId: string; sectionOrder: number } | null>(null)
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -456,7 +508,7 @@ export default function TechnicalDoc() {
     }
   }, [comments])
 
-  // Restore highlights after render
+  // Restore persistent highlights after render
   useLayoutEffect(() => {
     if (typeof window === 'undefined') return
 
@@ -491,6 +543,14 @@ export default function TechnicalDoc() {
           span.style.borderRadius = '2px'
           span.dataset.commentId = comment.id
           span.textContent = comment.selectedText
+          span.addEventListener('click', () => {
+            const bubble = document.querySelector(`.comment-bubble[data-comment-id="${comment.id}"]`)
+            if (bubble) {
+              bubble.scrollIntoView({ behavior: 'smooth', block: 'center' })
+              bubble.classList.add('bubble-flash')
+              setTimeout(() => bubble.classList.remove('bubble-flash'), 1500)
+            }
+          })
           middle.parentNode?.replaceChild(span, middle)
           break
         }
@@ -498,45 +558,59 @@ export default function TechnicalDoc() {
     })
   }, [comments])
 
-  // Text selection listener
+  // Mouse up handler: wrap selection with temp highlight
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const handleSelection = () => {
+    const handleMouseUp = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      // If clicked inside the comments panel, ignore
+      if (target.closest('.comments-panel')) return
+
       const sel = window.getSelection()
       if (!sel || sel.isCollapsed) {
-        setTooltip(null)
+        removeTempHighlights()
+        setSelectedInfo(null)
         return
       }
-      const text = sel.toString().trim()
-      if (text.length < 2) {
-        setTooltip(null)
+
+      const info = getSelectionInfo()
+      if (!info) {
+        removeTempHighlights()
+        setSelectedInfo(null)
         return
       }
-      const range = sel.getRangeAt(0)
-      const rect = range.getBoundingClientRect()
-      setTooltip({
-        x: rect.left + rect.width / 2,
-        y: rect.top + window.scrollY - 40,
-        text,
-      })
+
+      // Remove previous temp highlight
+      removeTempHighlights()
+
+      // Wrap with temp highlight
+      wrapSelectionWithTempHighlight()
+      setSelectedInfo(info)
     }
-    document.addEventListener('selectionchange', handleSelection)
-    return () => document.removeEventListener('selectionchange', handleSelection)
+
+    document.addEventListener('mouseup', handleMouseUp)
+    return () => document.removeEventListener('mouseup', handleMouseUp)
   }, [])
 
   const t = CONTENT[lang]
 
-  const onAddWithSelection = (selectedText: string) => {
-    const sectionId = COMMENT_SECTIONS[0]?.value || 'abstract'
-    setComments(prev => [...prev, {
-      id: generateId(),
-      timestamp: Date.now(),
-      sectionId,
-      author: 'user',
-      content: '',
-      selectedText,
-    }])
-    setCommentsOpen(true)
+  const onAddWithSelection = () => {
+    if (!selectedInfo) return
+    removeTempHighlights()
+    setComments(prev => {
+      const newComments = [...prev, {
+        id: generateId(),
+        timestamp: Date.now(),
+        sectionId: selectedInfo.sectionId,
+        sectionOrder: selectedInfo.sectionOrder,
+        author: 'user' as const,
+        content: '',
+        selectedText: selectedInfo.text,
+      }]
+      return newComments
+    })
+    setSelectedInfo(null)
+    window.getSelection()?.removeAllRanges()
   }
 
   return (
@@ -552,13 +626,13 @@ export default function TechnicalDoc() {
       </div>
 
       {/* Abstract */}
-      <section className="space-y-3">
+      <section className="space-y-3" data-section-id="abstract">
         <h3 className="text-lg font-semibold text-tf-text border-b border-tf-border pb-2">{t.abstract.title}</h3>
         <p className="text-tf-muted leading-relaxed text-sm">{t.abstract.body}</p>
       </section>
 
       {/* 1. Introduction */}
-      <section className="space-y-3">
+      <section className="space-y-3" data-section-id="intro">
         <h3 className="text-lg font-semibold text-tf-text border-b border-tf-border pb-2">{t.intro.title}</h3>
         <p className="text-tf-muted leading-relaxed text-sm">{t.intro.p1}</p>
         <p className="text-tf-muted leading-relaxed text-sm">{t.intro.p2}</p>
@@ -571,7 +645,7 @@ export default function TechnicalDoc() {
       </section>
 
       {/* 2. Background & Related Work */}
-      <section className="space-y-3">
+      <section className="space-y-3" data-section-id="relatedWork">
         <h3 className="text-lg font-semibold text-tf-text border-b border-tf-border pb-2">{t.relatedWork.title}</h3>
 
         <p className="text-tf-muted leading-relaxed text-sm">{t.relatedWork.p1}</p>
@@ -655,7 +729,7 @@ export default function TechnicalDoc() {
       </section>
 
       {/* 3. System Architecture */}
-      <section className="space-y-3">
+      <section className="space-y-3" data-section-id="architecture">
         <h3 className="text-lg font-semibold text-tf-text border-b border-tf-border pb-2">{t.architecture.title}</h3>
         <p className="text-tf-muted leading-relaxed text-sm">{t.architecture.p1}</p>
 
@@ -665,7 +739,7 @@ export default function TechnicalDoc() {
       </section>
 
       {/* 4. Method */}
-      <section className="space-y-6">
+      <section className="space-y-6" data-section-id="method">
         <h3 className="text-lg font-semibold text-tf-text border-b border-tf-border pb-2">{t.method.title}</h3>
 
         <div className="space-y-4">
@@ -714,7 +788,7 @@ export default function TechnicalDoc() {
       </section>
 
       {/* 5. Experiment */}
-      <section className="space-y-3">
+      <section className="space-y-3" data-section-id="experiment">
         <h3 className="text-lg font-semibold text-tf-text border-b border-tf-border pb-2">{t.experiment.title}</h3>
         <p className="text-tf-muted leading-relaxed text-sm">{t.experiment.p1}</p>
 
@@ -759,7 +833,7 @@ export default function TechnicalDoc() {
       </section>
 
       {/* 6. Conclusion */}
-      <section className="space-y-3">
+      <section className="space-y-3" data-section-id="conclusion">
         <h3 className="text-lg font-semibold text-tf-text border-b border-tf-border pb-2">{t.conclusion.title}</h3>
         <p className="text-tf-muted leading-relaxed text-sm">{t.conclusion.p1}</p>
         <p className="text-tf-muted leading-relaxed text-sm">{t.conclusion.p2}</p>
@@ -771,26 +845,12 @@ export default function TechnicalDoc() {
         </ul>
       </section>
 
-      {/* Tooltip for text selection */}
-      {tooltip && (
-        <div
-          className="fixed z-[60] bg-tf-accent text-white text-xs px-3 py-1.5 rounded shadow-lg cursor-pointer hover:bg-tf-accent/90 transition-colors"
-          style={{ left: tooltip.x, top: tooltip.y, transform: 'translateX(-50%)' }}
-          onClick={() => {
-            onAddWithSelection(tooltip.text)
-            setTooltip(null)
-            window.getSelection()?.removeAllRanges()
-          }}
-        >
-          添加批注
-        </div>
-      )}
-
       <CommentsPanel
         open={commentsOpen}
         onToggle={() => setCommentsOpen(o => !o)}
         comments={comments}
-        onAdd={(c) => setComments(prev => [...prev, { ...c, id: generateId(), timestamp: Date.now() }])}
+        selectedInfo={selectedInfo}
+        onAddWithSelection={onAddWithSelection}
         onDelete={(id) => setComments(prev => prev.filter(c => c.id !== id))}
         onUpdate={(id, content) => setComments(prev => prev.map(c => c.id === id ? { ...c, content } : c))}
         onExport={() => {
@@ -946,7 +1006,8 @@ function CommentsPanel({
   open,
   onToggle,
   comments,
-  onAdd,
+  selectedInfo,
+  onAddWithSelection,
   onDelete,
   onUpdate,
   onExport,
@@ -955,7 +1016,8 @@ function CommentsPanel({
   open: boolean
   onToggle: () => void
   comments: Comment[]
-  onAdd: (c: Omit<Comment, 'id' | 'timestamp'>) => void
+  selectedInfo: { text: string; sectionId: string; sectionOrder: number } | null
+  onAddWithSelection: () => void
   onDelete: (id: string) => void
   onUpdate: (id: string, content: string) => void
   onExport: () => void
@@ -982,29 +1044,36 @@ function CommentsPanel({
     setEditContent('')
   }
 
+  const sortedComments = [...comments].sort((a, b) => {
+    const aIdx = COMMENT_SECTIONS.findIndex(s => s.value === a.sectionId)
+    const bIdx = COMMENT_SECTIONS.findIndex(s => s.value === b.sectionId)
+    if (aIdx !== bIdx) return aIdx - bIdx
+    return a.sectionOrder - b.sectionOrder
+  })
+
   return (
     <>
-      {/* Floating toggle button */}
-      <button
-        onClick={onToggle}
-        className={`fixed bottom-6 right-6 z-50 w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition-colors ${
-          open ? 'bg-tf-accent text-white' : 'bg-tf-card text-tf-text border border-tf-border hover:border-tf-accent/50'
-        }`}
-        title="Annotations"
-      >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-        </svg>
-        {comments.length > 0 && (
-          <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center">
-            {comments.length}
-          </span>
-        )}
-      </button>
+      {/* Collapsed state: small floating button */}
+      {!open && (
+        <button
+          onClick={onToggle}
+          className="fixed bottom-6 right-6 z-50 w-12 h-12 rounded-full flex items-center justify-center shadow-lg bg-tf-card text-tf-text border border-tf-border hover:border-tf-accent/50 transition-colors"
+          title="Annotations"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          </svg>
+          {comments.length > 0 && (
+            <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center">
+              {comments.length}
+            </span>
+          )}
+        </button>
+      )}
 
       {/* Right-side panel */}
       {open && (
-        <div className="fixed top-0 right-0 z-50 w-80 h-screen bg-tf-card border-l border-tf-border shadow-2xl flex flex-col">
+        <div className="comments-panel fixed top-0 right-0 z-50 w-80 h-screen bg-tf-card border-l border-tf-border shadow-2xl flex flex-col">
           {/* Header */}
           <div className="px-4 py-3 border-b border-tf-border flex items-center justify-between bg-tf-border/10 shrink-0">
             <h3 className="text-sm font-semibold text-tf-text">Annotations</h3>
@@ -1041,64 +1110,89 @@ function CommentsPanel({
             </div>
           </div>
 
+          {/* Add annotation button */}
+          <div className="px-3 py-2 border-b border-tf-border shrink-0">
+            <button
+              onClick={onAddWithSelection}
+              disabled={!selectedInfo}
+              className={`w-full text-xs px-3 py-2 rounded-lg font-medium transition-all duration-200 flex items-center justify-center gap-1.5 ${
+                selectedInfo
+                  ? 'bg-tf-accent text-white hover:bg-tf-accent/90 animate-bounce-small'
+                  : 'bg-tf-border/20 text-tf-muted cursor-not-allowed'
+              }`}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              {selectedInfo ? '添加批注' : '先选中文字'}
+            </button>
+            {selectedInfo && (
+              <p className="text-[10px] text-tf-muted mt-1.5 truncate px-1">
+                已选: "{selectedInfo.text.length > 40 ? selectedInfo.text.slice(0, 40) + '...' : selectedInfo.text}"
+              </p>
+            )}
+          </div>
+
           {/* Annotation list */}
           <div className="flex-1 overflow-y-auto p-3 space-y-3">
             {comments.length === 0 && (
               <p className="text-xs text-tf-muted text-center py-4">Select text on the page and click "添加批注" to add an annotation.</p>
             )}
-            {comments.map(c => {
+            {sortedComments.map(c => {
               const section = COMMENT_SECTIONS.find(s => s.value === c.sectionId)
               const isEditing = editingId === c.id
               return (
                 <div
                   key={c.id}
-                  className="bg-tf-bg border border-tf-border/50 rounded-lg p-2.5 cursor-pointer hover:border-tf-accent/30 transition-colors"
+                  data-comment-id={c.id}
+                  className="comment-bubble bg-tf-bg border border-tf-border/40 rounded-xl p-3 cursor-pointer hover:border-tf-accent/30 transition-all shadow-sm hover:shadow-md"
                   onClick={() => scrollToHighlight(c.id)}
                 >
                   {/* Selected text quote */}
                   {c.selectedText && (
-                    <div className="text-[10px] bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 px-1.5 py-0.5 rounded mb-1.5 truncate border-l-2 border-yellow-500/40">
+                    <div className="text-[10px] bg-yellow-500/10 text-yellow-700 dark:text-yellow-300 px-2 py-1 rounded-lg mb-2 truncate border border-yellow-500/20">
                       "{c.selectedText.length > 60 ? c.selectedText.slice(0, 60) + '...' : c.selectedText}"
                     </div>
                   )}
 
-                  <div className="flex items-center justify-between mb-1">
-                    <span className={`text-[10px] font-medium ${c.author === 'user' ? 'text-blue-400' : 'text-purple-400'}`}>
-                      {c.author}
-                    </span>
-                    <div className="flex items-center gap-1">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${c.author === 'user' ? 'bg-blue-500/10 text-blue-500' : 'bg-purple-500/10 text-purple-500'}`}>
+                        {c.author}
+                      </span>
                       <span className="text-[9px] text-tf-muted">{section?.label || c.sectionId}</span>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onDelete(c.id) }}
-                        className="text-tf-muted hover:text-red-400"
-                      >
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <line x1="18" y1="6" x2="6" y2="18" />
-                          <line x1="6" y1="6" x2="18" y2="18" />
-                        </svg>
-                      </button>
                     </div>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onDelete(c.id) }}
+                      className="text-tf-muted hover:text-red-400 transition-colors"
+                    >
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
                   </div>
 
                   {isEditing ? (
-                    <div className="space-y-1" onClick={(e) => e.stopPropagation()}>
+                    <div className="space-y-1.5" onClick={(e) => e.stopPropagation()}>
                       <textarea
                         value={editContent}
                         onChange={(e) => setEditContent(e.target.value)}
                         rows={2}
-                        className="w-full text-[11px] bg-tf-card border border-tf-border rounded px-2 py-1 text-tf-text resize-none"
+                        className="w-full text-[11px] bg-tf-card border border-tf-border rounded-lg px-2 py-1.5 text-tf-text resize-none focus:border-tf-accent/50 focus:outline-none"
                         autoFocus
                       />
-                      <div className="flex gap-1">
+                      <div className="flex gap-1.5">
                         <button
                           onClick={() => saveEdit(c.id)}
-                          className="text-[10px] px-2 py-0.5 rounded bg-tf-accent text-white"
+                          className="text-[10px] px-2.5 py-1 rounded-lg bg-tf-accent text-white hover:bg-tf-accent/90"
                         >
                           Save
                         </button>
                         <button
                           onClick={() => { setEditingId(null); setEditContent('') }}
-                          className="text-[10px] px-2 py-0.5 rounded bg-tf-border/30 text-tf-muted"
+                          className="text-[10px] px-2.5 py-1 rounded-lg bg-tf-border/30 text-tf-muted hover:text-tf-text"
                         >
                           Cancel
                         </button>
@@ -1107,14 +1201,14 @@ function CommentsPanel({
                   ) : (
                     <div onClick={(e) => { e.stopPropagation(); setEditingId(c.id); setEditContent(c.content) }}>
                       {c.content ? (
-                        <p className="text-[11px] text-tf-text whitespace-pre-wrap">{c.content}</p>
+                        <p className="text-[11px] text-tf-text whitespace-pre-wrap leading-relaxed">{c.content}</p>
                       ) : (
                         <p className="text-[11px] text-tf-muted italic">Click to add annotation text...</p>
                       )}
                     </div>
                   )}
 
-                  <p className="text-[9px] text-tf-muted mt-1">{new Date(c.timestamp).toLocaleString()}</p>
+                  <p className="text-[9px] text-tf-muted mt-2">{new Date(c.timestamp).toLocaleString()}</p>
                 </div>
               )
             })}
