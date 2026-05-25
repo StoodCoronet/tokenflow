@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useLayoutEffect } from 'react'
 
 const CONTENT = {
   zh: {
@@ -426,6 +426,20 @@ interface Comment {
 
 type Lang = 'zh' | 'en'
 
+const COMMENT_SECTIONS = [
+  { value: 'abstract', label: 'Abstract' },
+  { value: 'intro', label: 'Introduction' },
+  { value: 'relatedWork', label: 'Related Work' },
+  { value: 'architecture', label: 'Architecture' },
+  { value: 'method', label: 'Method' },
+  { value: 'experiment', label: 'Experiment' },
+  { value: 'conclusion', label: 'Conclusion' },
+]
+
+function generateId(): string {
+  return Math.random().toString(36).slice(2) + Date.now().toString(36) + Math.random().toString(36).slice(2)
+}
+
 export default function TechnicalDoc() {
   const [lang, setLang] = useState<Lang>('zh')
   const [commentsOpen, setCommentsOpen] = useState(false)
@@ -515,7 +529,7 @@ export default function TechnicalDoc() {
   const onAddWithSelection = (selectedText: string) => {
     const sectionId = COMMENT_SECTIONS[0]?.value || 'abstract'
     setComments(prev => [...prev, {
-      id: crypto.randomUUID(),
+      id: generateId(),
       timestamp: Date.now(),
       sectionId,
       author: 'user',
@@ -776,7 +790,7 @@ export default function TechnicalDoc() {
         open={commentsOpen}
         onToggle={() => setCommentsOpen(o => !o)}
         comments={comments}
-        onAdd={(c) => setComments(prev => [...prev, { ...c, id: crypto.randomUUID(), timestamp: Date.now() }])}
+        onAdd={(c) => setComments(prev => [...prev, { ...c, id: generateId(), timestamp: Date.now() }])}
         onDelete={(id) => setComments(prev => prev.filter(c => c.id !== id))}
         onUpdate={(id, content) => setComments(prev => prev.map(c => c.id === id ? { ...c, content } : c))}
         onExport={() => {
