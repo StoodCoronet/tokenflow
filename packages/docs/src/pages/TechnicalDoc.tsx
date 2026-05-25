@@ -496,7 +496,7 @@ const PANEL_WIDTH_KEY = 'tf-technicaldoc-panel-width'
 const MIN_PANEL_WIDTH = 240
 const MAX_PANEL_WIDTH = 800
 const DEFAULT_PANEL_WIDTH = 320
-const PANEL_GAP = 80
+const PANEL_GAP = 40
 
 export default function TechnicalDoc() {
   const [lang, setLang] = useState<Lang>('zh')
