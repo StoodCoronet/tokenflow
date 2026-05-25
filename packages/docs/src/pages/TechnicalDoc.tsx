@@ -494,7 +494,7 @@ function removeTempHighlights() {
 
 const PANEL_WIDTH_KEY = 'tf-technicaldoc-panel-width'
 const MIN_PANEL_WIDTH = 240
-const MAX_PANEL_WIDTH = 600
+const MAX_PANEL_WIDTH = 800
 const DEFAULT_PANEL_WIDTH = 320
 
 export default function TechnicalDoc() {
