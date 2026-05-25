@@ -493,6 +493,7 @@ function removeTempHighlights() {
 }
 
 const PANEL_WIDTH = 320
+const PANEL_GAP = 80
 
 export default function TechnicalDoc() {
   const [lang, setLang] = useState<Lang>('zh')
@@ -520,7 +521,7 @@ export default function TechnicalDoc() {
     main.classList.remove('max-w-4xl')
 
     if (commentsOpen) {
-      main.style.paddingRight = `${PANEL_WIDTH}px`
+      main.style.paddingRight = `${PANEL_WIDTH + PANEL_GAP}px`
     } else {
       main.style.paddingRight = ''
     }
@@ -1179,22 +1180,11 @@ function CommentsPanel({
                     </div>
                   )}
 
-                  <div className="flex items-center justify-between mb-1.5">
-                    <div className="flex items-center gap-1.5">
-                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${c.author === 'user' ? 'bg-blue-500/10 text-blue-500' : 'bg-purple-500/10 text-purple-500'}`}>
-                        {c.author}
-                      </span>
-                      <span className="text-[9px] text-tf-muted">{section?.label || c.sectionId}</span>
-                    </div>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onDelete(c.id) }}
-                      className="text-tf-muted hover:text-red-400 transition-colors"
-                    >
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <line x1="18" y1="6" x2="6" y2="18" />
-                        <line x1="6" y1="6" x2="18" y2="18" />
-                      </svg>
-                    </button>
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${c.author === 'user' ? 'bg-blue-500/10 text-blue-500' : 'bg-purple-500/10 text-purple-500'}`}>
+                      {c.author}
+                    </span>
+                    <span className="text-[9px] text-tf-muted">{section?.label || c.sectionId}</span>
                   </div>
 
                   {isEditing ? (
