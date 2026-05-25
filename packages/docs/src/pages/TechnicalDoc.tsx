@@ -124,45 +124,75 @@ const CONTENT = {
     },
     experiment: {
       title: '5. Experiment',
-      p1: '我们从六个维度评估 Token Flow：代理吞吐量、转换正确性、仪表盘查询延迟、成本估算准确性、被动上下文模式检测和主动探针设计。所有实验均可使用内置的 studio-sim 模拟工具复现。',
+      p1: '我们从七个维度评估 Token Flow：转换正确性、仪表盘查询延迟、成本估算准确性、上下文策略调研、数据集构建、被动上下文模式检测和主动探针设计。',
       e1: {
-        title: 'Experiment 1: Proxy Throughput',
-        desc: '在不同并发级别下测量每秒请求数（RPS）和 p99 延迟，使用模拟上游服务器。验证代理链路在常规负载下不会成为瓶颈。',
-        strategy: 'studio-sim 启动 mock 上游和完整代理链路，模拟真实 HTTP 请求，记录吞吐量和延迟分布。',
-        script: 'tests/simulation/studio-sim.ts',
-        result: '500 请求 / 5 并发：吞吐量 ~500 req/s，p99 ~20 ms，成功率 100%。',
+        title: 'Experiment 1: Transformation Correctness',
+        desc: '用 mock 的 Provider 和 mock 的用户请求，把 11 个 Provider 模板逐个跑一遍，确认请求能正常转发并返回结构有效的响应。',
+        strategy: '搭建 mock upstream 模拟各 Provider 响应；Vitest 单元测试覆盖 Transformer 核心逻辑；集成测试验证端到端 pipeline 往返。',
+        script: 'pnpm test（tests/unit/ + tests/integration/）',
+        result: '单元测试 98 passed / 13 files；集成测试 4 passed / 2 files。',
+        summary: '大白话：就是搭了个假环境，把每个 Provider 都跑了一遍，看看格式转换有没有写错。',
       },
       e2: {
-        title: 'Experiment 2: Transformation Correctness',
-        desc: '验证 11 个 Provider 模板的标准客户端请求通过代理往返后生成结构有效的标准格式响应。',
-        strategy: 'Vitest 单元测试覆盖 Transformer 核心逻辑（精确匹配、前缀剥离、成本计算）；集成测试验证端到端 pipeline 往返。',
-        script: 'pnpm test（tests/unit/ + tests/integration/）',
-        result: '单元测试 98 passed / 13 files；集成测试 2 failed（需启动 server 环境）。',
-      },
-      e3: {
-        title: 'Experiment 3: Dashboard Query Latency',
-        desc: '比较使用预聚合 stats_aggregates 与原始 request_logs 扫描的 30 天趋势图表查询延迟。将数据库大小从 10K 变化到 500K request_logs。',
+        title: 'Experiment 2: Dashboard Query Latency',
+        desc: 'Dashboard 涉及大规模数据读取，因此使用预聚合表来缓存分析结果。比较预聚合查询与原始日志扫描的延迟差异。',
         strategy: '用 better-sqlite3 在 :memory: 数据库生成不同规模的测试数据，分别执行两种查询并计时。',
         script: 'scripts/bench-query-latency.ts',
         result: '预聚合查询稳定在 ~0.05 ms；原始日志扫描随数据量线性增长：10K→1.7 ms、50K→9.0 ms、100K→18.7 ms、500K→106 ms。差距约 2,000 倍。',
+        summary: '大白话：Dashboard 要读大量数据，所以用一个缓存表存分析结果，读缓存比读原始日志快约 2000 倍。',
       },
-      e4: {
-        title: 'Experiment 4: Cost Estimation Accuracy',
+      e3: {
+        title: 'Experiment 3: Cost Estimation Accuracy',
         desc: '验证定价解析和成本计算的准确性。',
         strategy: '单元测试覆盖 resolvePricing（精确匹配、provider 前缀剥离）和 computeCost（已知模型定价 × token 量），确保所有 studio-sim 模型均有定价。',
         script: 'tests/unit/pricing.test.ts',
         result: '12 个测试全部通过，覆盖 18 个模型（含前缀形式）。',
+        summary: '大白话：确认算钱没算错，每个支持的模型都有正确的单价和计算公式。',
+      },
+      e4: {
+        title: 'Experiment 4: Context Strategy Survey',
+        desc: '调研当前市面上主流 LLM 应用的上下文管理策略，建立分类体系。',
+        strategy: '通过文献调研与产品分析，梳理 ChatGPT、Claude、Cursor、Coze、Dify 等系统的上下文处理方式。',
+        table: [
+          { label: '方法', value: '文献调研 + 产品逆向分析' },
+          { label: '调研对象', value: 'ChatGPT / Claude / Cursor / Coze / Dify / 其他主流 LLM 应用' },
+          { label: '目标', value: '总结现有上下文管理策略的分类体系，为后续检测实验提供参照基线' },
+        ],
+        todo: '[TODO] 完成系统性调研并整理分类表格。',
       },
       e5: {
-        title: 'Experiment 5: Passive Detection Accuracy',
-        desc: '验证纯流量分析对上下文管理策略的分类能力。',
-        strategy: '被动分析基于代理层采集的流量特征（messages 结构、token 增长曲线、消息长度分布）。数据集从三个方向获取：公开多轮对话数据集（如 ShareGPT）、studio-sim 模拟数据、以及按大类（Coding / Customer Service / Creative Writing / Research / Agent Tool-Use）人工构造的合成数据。实验目标是评估 0-01~0-03 在不同领域下的分类一致性。',
-        todo: '[TODO] 确定数据集来源与领域划分，建立基线对比。',
+        title: 'Experiment 5: Dataset Selection',
+        desc: '选择并构建适用于上下文管理策略检测的评测数据集，按领域划分并对比不同数据源的特征。',
+        strategy: '从三个方向收集数据：公开多轮对话数据集、studio-sim 模拟流量、按领域人工构造的合成数据。',
+        table: [
+          { label: '数据源', value: '① ShareGPT 等公开数据集 ② studio-sim 模拟流量 ③ 人工构造合成数据' },
+          { label: '领域划分', value: 'Coding / Customer Service / Creative Writing / Research / Agent Tool-Use' },
+          { label: '目标', value: '建立覆盖多领域的基准数据集，为 0-01~0-03 的检测提供统一评测基础' },
+        ],
+        todo: '[TODO] 确定数据集来源、清洗策略与领域比例。',
       },
       e6: {
-        title: 'Experiment 6: Active Probe Design',
+        title: 'Experiment 6: Passive Traffic Analysis',
+        desc: '基于代理层采集的流量特征，对会话级上下文管理策略进行分类。',
+        strategy: '被动分析基于消息结构、token 增长曲线、消息长度分布等零入侵特征。',
+        table: [
+          { label: '方法', value: '被动流量分析（代理层观察，零入侵）' },
+          { label: '输入特征', value: 'messages 结构、token 增长曲线、消息长度分布' },
+          { label: '评估指标', value: '分类一致性、领域泛化能力' },
+          { label: '目标', value: '评估 0-01~0-03 在不同领域下的检测准确率与一致性' },
+        ],
+        todo: '[TODO] 在 E5 数据集上跑通被动检测流程，建立基线对比。',
+      },
+      e7: {
+        title: 'Experiment 7: Active Probe Design',
         desc: '探索主动探针作为被动分析的补充手段。',
-        strategy: '主动探针通过构造特定输入并观察响应行为来推断上下文策略，准确度高但具有入侵性。实验设计与被动分析保持同一份数据集，对比两种范式在相同场景下的一致性差异，为 1-xx 探针系列提供方法论基础。探针接口已在 Traffic Analyzer 中预留。',
+        strategy: '主动探针通过构造特定输入并观察响应行为来推断上下文策略。',
+        table: [
+          { label: '方法', value: '主动探针（构造输入→观察响应，高准确度但有入侵性）' },
+          { label: '实验设计', value: '与 E6 共用同一份数据集，对比两种范式在相同场景下的一致性差异' },
+          { label: '目标', value: '为 1-xx 探针系列建立方法论基础' },
+          { label: '状态', value: '探针接口已在 Architecture Diagram 中预留' },
+        ],
         todo: '[TODO] 设计探针范式框架，与被动分析形成对照实验。',
       },
     },
@@ -300,45 +330,75 @@ const CONTENT = {
     },
     experiment: {
       title: '5. Experiment',
-      p1: 'We evaluate Token Flow across six dimensions: proxy throughput, transformation correctness, dashboard query latency, cost estimation accuracy, passive context-pattern detection, and active probe design. All experiments are reproducible using the built-in studio-sim simulation harness.',
+      p1: 'We evaluate Token Flow across seven dimensions: transformation correctness, dashboard query latency, cost estimation accuracy, context strategy survey, dataset construction, passive context-pattern detection, and active probe design.',
       e1: {
-        title: 'Experiment 1: Proxy Throughput',
-        desc: 'Measure requests-per-second (RPS) and p99 latency under varying concurrency levels with a mock upstream server. Verify the proxy pipeline does not become a bottleneck under normal load.',
-        strategy: 'studio-sim launches a mock upstream and full proxy pipeline, simulates real HTTP requests, and records throughput and latency distribution.',
-        script: 'tests/simulation/studio-sim.ts',
-        result: '500 requests / 5 concurrency: throughput ~500 req/s, p99 ~20 ms, success rate 100%.',
+        title: 'Experiment 1: Transformation Correctness',
+        desc: 'Use mock providers and mock user requests to run all 11 provider templates end-to-end, confirming requests forward correctly and return valid responses.',
+        strategy: 'Set up mock upstream servers to simulate provider responses; Vitest unit tests cover Transformer core logic; integration tests validate end-to-end pipeline round-trips.',
+        script: 'pnpm test (tests/unit/ + tests/integration/)',
+        result: 'Unit tests: 98 passed / 13 files; Integration tests: 4 passed / 2 files.',
+        summary: 'In plain terms: we built a fake environment and ran every provider through it to check if format conversions are correct.',
       },
       e2: {
-        title: 'Experiment 2: Transformation Correctness',
-        desc: 'Validate that canonical client requests round-trip through the proxy for all 11 supported provider templates and produce structurally valid standardized responses.',
-        strategy: 'Vitest unit tests cover Transformer core logic (exact match, prefix stripping, cost computation); integration tests validate end-to-end pipeline round-trips.',
-        script: 'pnpm test (tests/unit/ + tests/integration/)',
-        result: 'Unit tests: 98 passed / 13 files; Integration tests: 2 failed (server environment required).',
-      },
-      e3: {
-        title: 'Experiment 3: Dashboard Query Latency',
-        desc: 'Compare query latency for 30-day trend charts using pre-aggregated stats_aggregates versus raw request_logs scans. Vary database size from 10K to 500K request_logs.',
+        title: 'Experiment 2: Dashboard Query Latency',
+        desc: 'Dashboard reads large amounts of data, so we use a pre-aggregated table to cache analysis results. Compare query latency between pre-aggregated and raw log scans.',
         strategy: 'Generate test data at different scales in an in-memory SQLite database via better-sqlite3, then time both query paths.',
         script: 'scripts/bench-query-latency.ts',
         result: 'Pre-aggregated queries remain stable at ~0.05 ms; raw scans grow linearly: 10K→1.7 ms, 50K→9.0 ms, 100K→18.7 ms, 500K→106 ms. Gap ~2,000×.',
+        summary: 'In plain terms: Dashboard reads a lot of data, so we cache analysis results — reading cache is ~2000× faster than reading raw logs.',
       },
-      e4: {
-        title: 'Experiment 4: Cost Estimation Accuracy',
+      e3: {
+        title: 'Experiment 3: Cost Estimation Accuracy',
         desc: 'Validate pricing resolution and cost computation accuracy.',
         strategy: 'Unit tests cover resolvePricing (exact match, provider prefix stripping) and computeCost (known model price × token count), ensuring all studio-sim models have pricing.',
         script: 'tests/unit/pricing.test.ts',
         result: '12 tests passed, covering 18 models (including prefixed forms).',
+        summary: 'In plain terms: this confirms the billing math is correct and every supported model has a valid price.',
+      },
+      e4: {
+        title: 'Experiment 4: Context Strategy Survey',
+        desc: 'Survey context management strategies used by mainstream LLM applications and establish a classification taxonomy.',
+        strategy: 'Review literature and analyze products such as ChatGPT, Claude, Cursor, Coze, and Dify to understand their context handling approaches.',
+        table: [
+          { label: 'Method', value: 'Literature review + product reverse analysis' },
+          { label: 'Targets', value: 'ChatGPT / Claude / Cursor / Coze / Dify / other mainstream LLM apps' },
+          { label: 'Goal', value: 'Summarize a taxonomy of existing context management strategies as a reference baseline for detection experiments' },
+        ],
+        todo: '[TODO] Complete systematic survey and compile classification table.',
       },
       e5: {
-        title: 'Experiment 5: Passive Detection Accuracy',
-        desc: 'Validate the classification capability of pure traffic analysis for context management strategies.',
-        strategy: 'Passive analysis relies on traffic features collected at the proxy layer (messages structure, token growth curves, message length distribution). Datasets are drawn from three directions: public multi-turn dialogue corpora (e.g., ShareGPT), studio-sim simulated traffic, and synthetic data constructed across domains (Coding / Customer Service / Creative Writing / Research / Agent Tool-Use). The goal is to evaluate the consistency of 0-01~0-03 across different domains.',
-        todo: '[TODO] Identify dataset sources and domain splits; establish baseline comparisons.',
+        title: 'Experiment 5: Dataset Selection',
+        desc: 'Select and construct evaluation datasets suitable for context management strategy detection, split by domain and compare characteristics across data sources.',
+        strategy: 'Collect data from three directions: public multi-turn dialogue datasets, studio-sim simulated traffic, and manually constructed synthetic data per domain.',
+        table: [
+          { label: 'Data Sources', value: '① Public datasets (e.g., ShareGPT) ② studio-sim traffic ③ Synthetic data per domain' },
+          { label: 'Domain Split', value: 'Coding / Customer Service / Creative Writing / Research / Agent Tool-Use' },
+          { label: 'Goal', value: 'Build a multi-domain benchmark dataset providing a unified evaluation base for 0-01~0-03 detection' },
+        ],
+        todo: '[TODO] Identify dataset sources, cleaning strategies, and domain proportions.',
       },
       e6: {
-        title: 'Experiment 6: Active Probe Design',
+        title: 'Experiment 6: Passive Traffic Analysis',
+        desc: 'Classify session-level context management strategies based on traffic features collected at the proxy layer.',
+        strategy: 'Passive analysis relies on zero-intrusion features such as message structure, token growth curves, and message length distribution.',
+        table: [
+          { label: 'Method', value: 'Passive traffic analysis (proxy-layer observation, zero-intrusion)' },
+          { label: 'Input Features', value: 'Message structure, token growth curves, message length distribution' },
+          { label: 'Metrics', value: 'Classification consistency, cross-domain generalization' },
+          { label: 'Goal', value: 'Evaluate detection accuracy and consistency of 0-01~0-03 across domains' },
+        ],
+        todo: '[TODO] Run passive detection on E5 dataset and establish baseline comparisons.',
+      },
+      e7: {
+        title: 'Experiment 7: Active Probe Design',
         desc: 'Explore active probing as a complementary method to passive analysis.',
-        strategy: 'Active probes infer context strategies by crafting specific inputs and observing response behavior, offering higher accuracy at the cost of invasiveness. The experimental design shares the same dataset with passive analysis and compares consistency between the two paradigms under identical scenarios, laying the methodological foundation for the 1-xx probe series. The probe interface is reserved in the Traffic Analyzer.',
+        strategy: 'Active probes infer context strategies by crafting specific inputs and observing response behavior.',
+        table: [
+          { label: 'Method', value: 'Active probing (crafted input → observe response, higher accuracy but invasive)' },
+          { label: 'Experiment Design', value: 'Shares the same dataset with E6; compares consistency between paradigms under identical scenarios' },
+          { label: 'Goal', value: 'Establish methodological foundation for the 1-xx probe series' },
+          { label: 'Status', value: 'Probe interface reserved in Traffic Analyzer architecture' },
+        ],
         todo: '[TODO] Design the probe paradigm framework and establish a controlled comparison with passive analysis.',
       },
     },
@@ -541,19 +601,38 @@ export default function TechnicalDoc() {
         <p className="text-tf-muted leading-relaxed text-sm">{t.experiment.p1}</p>
 
         <div className="space-y-4 mt-4">
-          {(['e1', 'e2', 'e3', 'e4'] as const).map((key) => {
+          {(['e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7'] as const).map((key) => {
             const e = t.experiment[key]
             return (
               <div key={key} className="border border-tf-border rounded-lg p-4 bg-tf-card">
                 <h4 className="text-sm font-semibold text-tf-text mb-1">{e.title}</h4>
                 <p className="text-xs text-tf-muted">{e.desc}</p>
                 <p className="text-xs text-tf-muted mt-2"><span className="font-medium text-tf-text">Strategy:</span> {e.strategy}</p>
-                <p className="text-xs text-tf-muted mt-1"><span className="font-medium text-tf-text">Script:</span> {e.script}</p>
+                {'script' in e && (
+                  <p className="text-xs text-tf-muted mt-1"><span className="font-medium text-tf-text">Script:</span> {e.script}</p>
+                )}
+                {'table' in e && (
+                  <div className="mt-2 border border-tf-border/50 rounded overflow-hidden">
+                    <table className="w-full text-xs">
+                      <tbody>
+                        {e.table.map((row: { label: string; value: string }, i: number) => (
+                          <tr key={i} className={i > 0 ? 'border-t border-tf-border/30' : ''}>
+                            <td className="px-3 py-1.5 bg-tf-border/10 text-tf-text font-medium w-28 shrink-0">{row.label}</td>
+                            <td className="px-3 py-1.5 text-tf-muted">{row.value}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
                 {'result' in e && (
-                  <p className="text-xs text-green-600 mt-2"><span className="font-medium">Result:</span> {e.result}</p>
+                  <p className="text-xs text-tf-muted mt-2"><span className="font-medium text-tf-text">Result:</span> {e.result}</p>
                 )}
                 {'todo' in e && (
                   <p className="text-xs text-tf-accent mt-2">{e.todo}</p>
+                )}
+                {'summary' in e && (
+                  <p className="text-xs text-green-600 mt-2 italic">{e.summary}</p>
                 )}
               </div>
             )

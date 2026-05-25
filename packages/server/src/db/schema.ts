@@ -89,6 +89,7 @@ function migrate(db: Database.Database): void {
       status TEXT NOT NULL DEFAULT 'success',
       detected_pattern TEXT,
       efficiency_score REAL DEFAULT 0,
+      estimated_cost REAL DEFAULT 0,
       request_data TEXT,
       response_data TEXT,
       created_at TEXT NOT NULL,
